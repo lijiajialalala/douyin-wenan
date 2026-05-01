@@ -1,0 +1,168 @@
+version: 1
+description: Phase 1 manifest schema
+
+columns:
+  - name: work_id
+    required: true
+    type: string
+    description: Stable unique ID for one Douyin work item
+  - name: author
+    required: true
+    type: string
+    description: Normalized author display name used in corpus paths
+  - name: platform
+    required: true
+    type: string
+    allowed: [douyin]
+    description: Source platform, fixed in Phase 1
+  - name: video_link
+    required: true
+    type: string
+    description: Canonical source video URL
+  - name: account_link
+    required: false
+    type: string
+    description: Canonical source account URL
+  - name: title
+    required: true
+    type: string
+    description: Source title or caption snapshot
+  - name: publish_time
+    required: false
+    type: string
+    description: Publish time snapshot kept as text
+  - name: duration_text
+    required: false
+    type: string
+    description: Original display duration text
+  - name: duration_seconds
+    required: false
+    type: integer
+    description: Parsed duration in seconds
+  - name: likes
+    required: false
+    type: integer
+    description: Like count snapshot
+  - name: comments
+    required: false
+    type: integer
+    description: Comment count snapshot
+  - name: favorites
+    required: false
+    type: integer
+    description: Favorite count snapshot
+  - name: shares
+    required: false
+    type: integer
+    description: Share count snapshot
+  - name: followers
+    required: false
+    type: integer
+    description: Author follower count snapshot
+  - name: raw_video_path
+    required: false
+    type: string
+    description: Absolute path to downloaded video asset
+  - name: raw_audio_path
+    required: false
+    type: string
+    description: Absolute path to extracted audio asset
+  - name: asr_text_path
+    required: false
+    type: string
+    description: Absolute path to intermediate ASR transcript text
+  - name: legacy_txt_path
+    required: false
+    type: string
+    description: Absolute path to external legacy transcript txt used as read-only input
+  - name: txt_path
+    required: false
+    type: string
+    description: Absolute path to canonical transcript txt in runtime corpus
+  - name: download_status
+    required: true
+    type: string
+    allowed: [pending, ok, failed]
+    default: pending
+    description: Download stage status
+  - name: download_time
+    required: false
+    type: string
+    description: Timestamp of last download completion
+  - name: asr_provider
+    required: false
+    type: string
+    description: Provider used for last ASR run
+  - name: asr_model
+    required: false
+    type: string
+    description: Exact ASR model used for last ASR run
+  - name: asr_time
+    required: false
+    type: string
+    description: Timestamp of last ASR run
+  - name: asr_status
+    required: true
+    type: string
+    allowed: [pending, ok, failed]
+    default: pending
+    description: ASR stage status
+  - name: asr_char_count
+    required: false
+    type: integer
+    description: Character count of normalized transcript
+  - name: asr_chars_per_minute
+    required: false
+    type: number
+    description: Transcript character density over duration
+  - name: asr_quality_grade
+    required: false
+    type: string
+    allowed: [A, B, C, D]
+    description: Coarse ASR quality grade
+  - name: asr_quality_flags
+    required: false
+    type: string
+    description: Machine-readable anomaly flags
+  - name: manual_reviewed
+    required: true
+    type: string
+    allowed: [yes, no]
+    default: no
+    description: Whether transcript received human review
+  - name: txt_sync_status
+    required: true
+    type: string
+    allowed: [pending, ok, failed]
+    default: pending
+    description: Standard transcript landing status
+  - name: dedup_status
+    required: true
+    type: string
+    allowed: [unknown, unique, near_duplicate, duplicate]
+    default: unknown
+    description: Duplicate classification status
+  - name: dedup_group_id
+    required: false
+    type: string
+    description: Group ID for near-duplicate or duplicate cluster
+  - name: notes
+    required: false
+    type: string
+    description: Freeform operator note, not machine state
+
+row_invariants:
+  - rule: work_id must be unique
+  - rule: asr_status ok requires download_status ok
+  - rule: txt_sync_status ok requires asr_status ok
+  - rule: dedup_status other than unknown requires txt_sync_status ok
+  - rule: asr_quality_grade may only be set when asr_status is ok
+  - rule: txt_path must be non-empty when txt_sync_status is ok
+
+creation_defaults:
+  platform: douyin
+  download_status: pending
+  asr_status: pending
+  manual_reviewed: no
+  txt_sync_status: pending
+  dedup_status: unknown

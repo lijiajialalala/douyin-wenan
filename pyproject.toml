@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "douyin-wenan"
+version = "0.1.0"
+description = "Douyin short-video copy corpus engine"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "imageio-ffmpeg>=0.6.0",
+    "requests>=2.32.0",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

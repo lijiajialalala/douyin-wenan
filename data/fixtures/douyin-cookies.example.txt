@@ -1,0 +1,5 @@
+# Netscape HTTP Cookie File
+# Example only. Do not commit real Douyin cookies.
+
+.iesdouyin.com	TRUE	/	FALSE	1999999999	ttwid	<replace-with-local-cookie>
+www.douyin.com	FALSE	/	FALSE	1999999999	__ac_nonce	<replace-with-local-cookie>

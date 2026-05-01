@@ -13,7 +13,7 @@ from douyin_wenan.config import load_runtime_config
 from douyin_wenan.manifest.filters import select_txt_sync_pending, select_txt_sync_rebuildable
 from douyin_wenan.manifest.repository import ManifestRepository
 from douyin_wenan.manifest.schema import load_manifest_schema
-from douyin_wenan.manifest.transitions import mark_txt_sync_failed, mark_txt_sync_succeeded, reset_dedup
+from douyin_wenan.manifest.transitions import append_note, mark_txt_sync_failed, mark_txt_sync_succeeded, reset_dedup
 from douyin_wenan.normalize.txt_writer import (
     build_standard_txt_path,
     is_runtime_transcript_path,
@@ -53,6 +53,7 @@ def main() -> int:
     succeeded = 0
     failed = 0
     for row in selected:
+        original_row = dict(row)
         row_copy = dict(row)
         try:
             transcript_text = Path(row_copy["asr_text_path"]).read_text(encoding="utf-8")
@@ -78,8 +79,12 @@ def main() -> int:
             succeeded += 1
             print(f"ok\t{row_copy['work_id']}\t{output_path}")
         except Exception as exc:
-            mark_txt_sync_failed(row_copy, reason=str(exc))
-            repo.upsert_row(row_copy)
+            failure_row = dict(original_row)
+            if args.rewrite_existing and (original_row.get("txt_sync_status", "") or "").strip() == "ok":
+                append_note(failure_row, f"txt sync rewrite failed: {exc}")
+            else:
+                mark_txt_sync_failed(failure_row, reason=str(exc))
+            repo.upsert_row(failure_row)
             failed += 1
             print(f"failed\t{row_copy['work_id']}\t{exc}")
 

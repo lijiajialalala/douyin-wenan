@@ -13,12 +13,10 @@ from douyin_wenan.config import load_runtime_config
 from douyin_wenan.manifest.filters import select_asr_completed, select_asr_pending
 from douyin_wenan.manifest.repository import ManifestRepository
 from douyin_wenan.manifest.schema import load_manifest_schema
-from douyin_wenan.manifest.transitions import mark_asr_failed, mark_asr_succeeded, reset_txt_sync
+from douyin_wenan.manifest.transitions import append_note, mark_asr_failed, mark_asr_recleaned, mark_asr_succeeded
 from douyin_wenan.paths import ensure_parent_dir
-from douyin_wenan.transcribe.audio import extract_audio_for_asr
 from douyin_wenan.transcribe.cleaning import clean_transcript_text
 from douyin_wenan.transcribe.quality import grade_transcript
-from douyin_wenan.transcribe.siliconflow import require_api_key, transcribe_audio_file
 
 
 def parse_args():
@@ -52,11 +50,14 @@ def main() -> int:
 
     api_key = ""
     if not args.reclean_existing:
+        from douyin_wenan.transcribe.siliconflow import require_api_key
+
         api_key = require_api_key(config.asr_api_key_env)
 
     succeeded = 0
     failed = 0
     for row in selected:
+        original_row = dict(row)
         row_copy = dict(row)
         try:
             note = "asr response ok"
@@ -65,9 +66,11 @@ def main() -> int:
                 asr_text_path = Path(row_copy["asr_text_path"])
                 cleaned_text = clean_transcript_text(asr_text_path.read_text(encoding="utf-8"))
                 raw_audio_path_value = (row_copy.get("raw_audio_path", "") or "").strip()
-                reset_txt_sync(row_copy, reason="asr text recleaned")
                 note = "existing asr text recleaned"
             else:
+                from douyin_wenan.transcribe.audio import extract_audio_for_asr
+                from douyin_wenan.transcribe.siliconflow import transcribe_audio_file
+
                 raw_video_path = Path(row_copy["raw_video_path"])
                 audio_path = extract_audio_for_asr(
                     raw_video_path=raw_video_path,
@@ -90,24 +93,40 @@ def main() -> int:
             ensure_parent_dir(asr_text_path)
             asr_text_path.write_text(cleaned_text, encoding="utf-8")
             grade, flags, char_count, cpm_text = grade_transcript(cleaned_text, row_copy.get("duration_seconds", ""))
-            mark_asr_succeeded(
-                row_copy,
-                raw_audio_path=raw_audio_path_value,
-                asr_text_path=str(asr_text_path.resolve()),
-                asr_provider=config.asr_provider,
-                asr_model=config.asr_model,
-                asr_char_count=char_count,
-                asr_chars_per_minute=cpm_text,
-                asr_quality_grade=grade,
-                asr_quality_flags=flags,
-                note=note,
-            )
+            if args.reclean_existing:
+                mark_asr_recleaned(
+                    row_copy,
+                    raw_audio_path=raw_audio_path_value,
+                    asr_text_path=str(asr_text_path.resolve()),
+                    asr_char_count=char_count,
+                    asr_chars_per_minute=cpm_text,
+                    asr_quality_grade=grade,
+                    asr_quality_flags=flags,
+                    note=note,
+                )
+            else:
+                mark_asr_succeeded(
+                    row_copy,
+                    raw_audio_path=raw_audio_path_value,
+                    asr_text_path=str(asr_text_path.resolve()),
+                    asr_provider=config.asr_provider,
+                    asr_model=config.asr_model,
+                    asr_char_count=char_count,
+                    asr_chars_per_minute=cpm_text,
+                    asr_quality_grade=grade,
+                    asr_quality_flags=flags,
+                    note=note,
+                )
             repo.upsert_row(row_copy)
             succeeded += 1
             print(f"ok\t{row_copy['work_id']}\t{asr_text_path}")
         except Exception as exc:
-            mark_asr_failed(row_copy, reason=str(exc))
-            repo.upsert_row(row_copy)
+            failure_row = dict(original_row)
+            if args.reclean_existing:
+                append_note(failure_row, f"asr reclean failed: {exc}")
+            else:
+                mark_asr_failed(failure_row, reason=str(exc))
+            repo.upsert_row(failure_row)
             failed += 1
             print(f"failed\t{row_copy['work_id']}\t{exc}")
 

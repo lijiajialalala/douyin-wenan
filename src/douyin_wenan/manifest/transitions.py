@@ -149,6 +149,31 @@ def mark_asr_succeeded(
     return row
 
 
+def mark_asr_recleaned(
+    row: dict[str, str],
+    *,
+    raw_audio_path: str,
+    asr_text_path: str,
+    asr_char_count: int,
+    asr_chars_per_minute: str,
+    asr_quality_grade: str,
+    asr_quality_flags: str,
+    note: str | None = None,
+) -> dict[str, str]:
+    if row.get("asr_status") != "ok":
+        raise ValueError("Cannot mark ASR recleaned unless asr_status is ok")
+    row["raw_audio_path"] = raw_audio_path
+    row["asr_text_path"] = asr_text_path
+    row["asr_char_count"] = str(asr_char_count)
+    row["asr_chars_per_minute"] = asr_chars_per_minute
+    row["asr_quality_grade"] = asr_quality_grade
+    row["asr_quality_flags"] = asr_quality_flags
+    reset_txt_sync(row, reason="asr text recleaned")
+    if note:
+        _append_note(row, note)
+    return row
+
+
 def mark_asr_failed(row: dict[str, str], *, reason: str) -> dict[str, str]:
     row["raw_audio_path"] = ""
     row["asr_text_path"] = ""
@@ -169,6 +194,11 @@ def mark_txt_sync_failed(row: dict[str, str], *, reason: str) -> dict[str, str]:
     row["txt_path"] = ""
     transition_txt_sync(row, "failed")
     _append_note(row, f"txt sync failed: {reason}")
+    return row
+
+
+def append_note(row: dict[str, str], message: str) -> dict[str, str]:
+    _append_note(row, message)
     return row
 
 

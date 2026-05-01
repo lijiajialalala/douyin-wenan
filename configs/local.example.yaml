@@ -1,0 +1,18 @@
+legacy_input_root: "D:/视频创作/书籍/视频文案/对标作者文案"
+runtime_root: "D:/视频创作/douyin-wenan-data"
+
+runtime:
+  manifest_path: "D:/视频创作/douyin-wenan-data/manifest/douyin_manifest.csv"
+  source_links_dir: "D:/视频创作/douyin-wenan-data/ingest/source_links"
+  raw_video_dir: "D:/视频创作/douyin-wenan-data/assets/raw_videos"
+  raw_audio_dir: "D:/视频创作/douyin-wenan-data/assets/raw_audio"
+  asr_text_dir: "D:/视频创作/douyin-wenan-data/snapshots/asr_text"
+  corpus_dir: "D:/视频创作/douyin-wenan-data/corpus"
+  analysis_dir: "D:/视频创作/douyin-wenan-data/analysis"
+  logs_dir: "D:/视频创作/douyin-wenan-data/logs"
+
+asr:
+  provider: "siliconflow"
+  model: "FunAudioLLM/SenseVoiceSmall"
+  base_url: "https://api.siliconflow.cn"
+  api_key_env: "SILICONFLOW_API_KEY"

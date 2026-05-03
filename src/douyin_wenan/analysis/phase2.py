@@ -213,10 +213,18 @@ def select_phase2_ready(
     return selected
 
 
-def analyze_phase2_rows(rows: list[dict[str, str]]) -> Phase2AnalysisResult:
+def analyze_phase2_rows(
+    rows: list[dict[str, str]],
+    *,
+    route_baseline_rows: list[dict[str, str]] | None = None,
+) -> Phase2AnalysisResult:
     labeled_rows = [_build_labeled_row(row) for row in rows]
     ranked_rows, author_baselines = _attach_author_relative_metrics(labeled_rows)
-    route_foundation_patterns = _build_route_foundation_patterns(ranked_rows)
+    if route_baseline_rows is None or route_baseline_rows is rows:
+        route_source_rows = ranked_rows
+    else:
+        route_source_rows = [_build_labeled_row(row) for row in route_baseline_rows]
+    route_foundation_patterns = _build_route_foundation_patterns(route_source_rows)
     author_foundation_patterns = _build_author_foundation_patterns(
         ranked_rows,
         route_foundation_patterns=route_foundation_patterns,

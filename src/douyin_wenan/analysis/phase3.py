@@ -130,6 +130,8 @@ def write_phase3_exports(
         readable_zh_dir,
         skill_cards=result.skill_cards,
         anti_skill_cards=result.anti_skill_cards,
+        target_authors=effective_target_authors,
+        replace_all=replace_all,
     )
 
     return {
@@ -633,6 +635,8 @@ def _write_readable_zh_exports(
     *,
     skill_cards: list[dict[str, object]],
     anti_skill_cards: list[dict[str, object]],
+    target_authors: tuple[str, ...],
+    replace_all: bool,
 ) -> dict[str, Path]:
     skill_csv_path = readable_zh_dir / "skills_zh.csv"
     anti_csv_path = readable_zh_dir / "anti_skills_zh.csv"
@@ -641,12 +645,26 @@ def _write_readable_zh_exports(
 
     skill_rows = [_readable_skill_row(card) for card in skill_cards]
     anti_rows = [_readable_anti_skill_row(card) for card in anti_skill_cards]
+    existing_skill_rows = read_csv_rows(skill_csv_path) if skill_csv_path.exists() else []
+    existing_anti_rows = read_csv_rows(anti_csv_path) if anti_csv_path.exists() else []
+    retained_skill_rows = [] if replace_all else [
+        row
+        for row in existing_skill_rows
+        if not target_authors or (row.get("作者来源", "") or "").strip() not in target_authors
+    ]
+    retained_anti_rows = [] if replace_all else [
+        row
+        for row in existing_anti_rows
+        if not target_authors or (row.get("作者来源", "") or "").strip() not in target_authors
+    ]
+    merged_skill_rows = _merge_readable_rows(retained_skill_rows, skill_rows)
+    merged_anti_rows = _merge_readable_rows(retained_anti_rows, anti_rows)
 
     ensure_parent_dir(skill_csv_path)
-    write_csv_rows(skill_csv_path, _summary_fieldnames(skill_rows), skill_rows)
-    write_csv_rows(anti_csv_path, _summary_fieldnames(anti_rows), anti_rows)
-    skill_md_path.write_text(_render_readable_markdown("正向技能", skill_rows), encoding="utf-8")
-    anti_md_path.write_text(_render_readable_markdown("反面禁忌", anti_rows), encoding="utf-8")
+    write_csv_rows(skill_csv_path, _summary_fieldnames(merged_skill_rows), merged_skill_rows)
+    write_csv_rows(anti_csv_path, _summary_fieldnames(merged_anti_rows), merged_anti_rows)
+    skill_md_path.write_text(_render_readable_markdown("正向技能", merged_skill_rows), encoding="utf-8")
+    anti_md_path.write_text(_render_readable_markdown("反面禁忌", merged_anti_rows), encoding="utf-8")
     return {
         "skills_csv": skill_csv_path,
         "anti_skills_csv": anti_csv_path,
@@ -720,6 +738,16 @@ def _render_readable_markdown(title: str, rows: list[dict[str, str]]) -> str:
             lines.append(f"- {key}：{value}")
         lines.append("")
     return "\n".join(lines)
+
+
+def _merge_readable_rows(existing_rows: list[dict[str, str]], new_rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    merged_by_card_id: dict[str, dict[str, str]] = {}
+    for row in existing_rows + new_rows:
+        card_id = (row.get("系统卡片ID", "") or "").strip()
+        if not card_id:
+            continue
+        merged_by_card_id[card_id] = row
+    return list(merged_by_card_id.values())
 
 
 def _join_zh(values: object) -> str:

@@ -318,10 +318,17 @@ class Phase3DistillationTests(unittest.TestCase):
 
             write_phase3_exports(author_a, tmp)
             write_phase3_exports(author_b, tmp)
+            write_phase3_exports(author_a, tmp, target_authors=("作者A",))
 
             summary_rows = read_csv_rows(tmp / "exports" / "phase3_candidates.csv")
+            skill_rows = read_csv_rows(tmp / "readable_zh" / "skills_zh.csv")
+            anti_rows = read_csv_rows(tmp / "readable_zh" / "anti_skills_zh.csv")
             self.assertEqual({row["source_author"] for row in summary_rows}, {"作者A", "作者B"})
             self.assertEqual(len(summary_rows), 2)
+            self.assertEqual({row["作者来源"] for row in skill_rows}, {"作者A"})
+            self.assertEqual({row["作者来源"] for row in anti_rows}, {"作者B"})
+            self.assertIn("基础能力：先提问题，再亮观点", (tmp / "readable_zh" / "skills_zh.md").read_text(encoding="utf-8"))
+            self.assertIn("不要用平铺直叙的弱开头", (tmp / "readable_zh" / "anti_skills_zh.md").read_text(encoding="utf-8"))
             self.assertTrue((tmp / "assets" / "skills").exists())
             self.assertTrue((tmp / "assets" / "anti_skills").exists())
 
@@ -472,8 +479,14 @@ class Phase3DistillationTests(unittest.TestCase):
             )
 
             summary_rows = read_csv_rows(tmp / "exports" / "phase3_candidates.csv")
+            skill_rows = read_csv_rows(tmp / "readable_zh" / "skills_zh.csv")
+            anti_rows = read_csv_rows(tmp / "readable_zh" / "anti_skills_zh.csv")
             self.assertEqual({row["source_author"] for row in summary_rows}, {"作者B"})
             self.assertFalse(any("作者A" == row["source_author"] for row in summary_rows))
+            self.assertEqual(skill_rows, [])
+            self.assertEqual({row["作者来源"] for row in anti_rows}, {"作者B"})
+            self.assertIn("暂无导出结果。", (tmp / "readable_zh" / "skills_zh.md").read_text(encoding="utf-8"))
+            self.assertIn("不要用平铺直叙的弱开头", (tmp / "readable_zh" / "anti_skills_zh.md").read_text(encoding="utf-8"))
             for card_id in author_a_card_ids:
                 self.assertFalse((tmp / "assets" / "skills" / f"{card_id}.yaml").exists())
                 self.assertFalse((tmp / "assets" / "anti_skills" / f"{card_id}.yaml").exists())

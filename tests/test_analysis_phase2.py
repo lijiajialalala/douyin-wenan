@@ -268,6 +268,94 @@ class Phase2AnalysisTests(unittest.TestCase):
             self.assertTrue(evidence_rows)
             self.assertEqual(evidence_rows[0]["baseline_sample_size"], "6")
 
+    def test_analyze_phase2_rows_author_scoped_uses_external_route_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            author_a_rows = []
+            author_b_rows = []
+
+            for idx in range(1, 7):
+                author_a_rows.append(
+                    self._make_row(
+                        tmp=tmp,
+                        work_id=f"ab_a_{idx}",
+                        title=f"制度机制拆解 A{idx}",
+                        likes=180 - idx,
+                        comments=16,
+                        favorites=24,
+                        shares=10,
+                        duration_seconds=210,
+                        body=(
+                            "为什么制度设计最后总会反噬自己？真正的关键，是执行权和解释权被绑在了一起。"
+                            "关注我，下一条继续拆。"
+                            if idx <= 4
+                            else "制度设计最后会反噬自己，关键在于执行权和解释权被绑在了一起。"
+                            "关注我，下一条继续拆。"
+                        ),
+                    )
+                )
+
+            for idx in range(1, 7):
+                author_b_rows.append(
+                    self._make_row(
+                        tmp=tmp,
+                        work_id=f"ab_b_{idx}",
+                        title=f"制度机制拆解 B{idx}",
+                        likes=140 - idx,
+                        comments=12,
+                        favorites=18,
+                        shares=8,
+                        duration_seconds=210,
+                        body=(
+                            "为什么制度设计最后总会反噬自己？真正的关键，是执行权和解释权被绑在了一起。"
+                            "关注我，下一条继续拆。"
+                        ),
+                        author="第二作者",
+                        account_link="https://example.com/u/2",
+                    )
+                )
+
+            result = analyze_phase2_rows(
+                author_a_rows,
+                route_baseline_rows=[*author_a_rows, *author_b_rows],
+            )
+
+            route_rows = [
+                row
+                for row in result.route_foundation_patterns
+                if row["route_content_type"] == "concept_explainer"
+                and row["route_format"] == "long_explainer"
+                and row["route_goal"] == "follow"
+                and row["feature_name"] == "opening_problem_presence"
+                and row["feature_value"] == "yes"
+            ]
+            self.assertEqual(len(route_rows), 1)
+            self.assertEqual(route_rows[0]["row_count"], "12")
+            self.assertEqual(route_rows[0]["support_count"], "10")
+
+            foundation_rows = [
+                row
+                for row in result.author_foundation_patterns
+                if row["author"] == "柏拉图的石头"
+                and row["route_content_type"] == "concept_explainer"
+                and row["route_format"] == "long_explainer"
+                and row["route_goal"] == "follow"
+                and row["feature_name"] == "opening_problem_presence"
+                and row["feature_value"] == "yes"
+            ]
+            self.assertFalse(foundation_rows)
+
+            evidence_rows = [
+                row
+                for row in result.evidence_records
+                if row["author"] == "柏拉图的石头"
+                and row["evidence_kind"] == "author_foundation_pattern"
+                and row["feature_name"] == "opening_problem_presence"
+                and row["feature_value"] == "yes"
+                and row["route_goal"] == "follow"
+            ]
+            self.assertFalse(evidence_rows)
+
     def test_write_phase2_exports_merges_author_scoped_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
@@ -341,6 +429,76 @@ class Phase2AnalysisTests(unittest.TestCase):
             self.assertTrue(route_rows)
             self.assertTrue(any(row["author"] == "柏拉图的石头" for row in evidence_rows))
             self.assertTrue(any(row["author"] == "第二作者" for row in evidence_rows))
+
+    def test_write_phase2_exports_author_rerun_keeps_full_route_foundations(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            analysis_dir = tmp / "analysis"
+            author_a_rows = []
+            author_b_rows = []
+
+            for idx in range(1, 7):
+                author_a_rows.append(
+                    self._make_row(
+                        tmp=tmp,
+                        work_id=f"route_a_{idx}",
+                        title=f"制度机制拆解 A{idx}",
+                        likes=180 - idx,
+                        comments=16,
+                        favorites=24,
+                        shares=10,
+                        duration_seconds=210,
+                        body=(
+                            "为什么制度设计最后总会反噬自己？真正的关键，是执行权和解释权被绑在了一起。"
+                            "关注我，下一条继续拆。"
+                            if idx <= 4
+                            else "制度设计最后会反噬自己，关键在于执行权和解释权被绑在了一起。"
+                            "关注我，下一条继续拆。"
+                        ),
+                    )
+                )
+
+            for idx in range(1, 7):
+                author_b_rows.append(
+                    self._make_row(
+                        tmp=tmp,
+                        work_id=f"route_b_{idx}",
+                        title=f"制度机制拆解 B{idx}",
+                        likes=140 - idx,
+                        comments=12,
+                        favorites=18,
+                        shares=8,
+                        duration_seconds=210,
+                        body=(
+                            "为什么制度设计最后总会反噬自己？真正的关键，是执行权和解释权被绑在了一起。"
+                            "关注我，下一条继续拆。"
+                        ),
+                        author="第二作者",
+                        account_link="https://example.com/u/2",
+                    )
+                )
+
+            full_rows = [*author_a_rows, *author_b_rows]
+            write_phase2_exports(analyze_phase2_rows(full_rows), analysis_dir)
+            write_phase2_exports(
+                analyze_phase2_rows(author_a_rows, route_baseline_rows=full_rows),
+                analysis_dir,
+                target_authors=("柏拉图的石头",),
+            )
+
+            route_rows = read_csv_rows(analysis_dir / "baselines" / "route_foundation_patterns.csv")
+            target_rows = [
+                row
+                for row in route_rows
+                if row["route_content_type"] == "concept_explainer"
+                and row["route_format"] == "long_explainer"
+                and row["route_goal"] == "follow"
+                and row["feature_name"] == "opening_problem_presence"
+                and row["feature_value"] == "yes"
+            ]
+            self.assertEqual(len(target_rows), 1)
+            self.assertEqual(target_rows[0]["row_count"], "12")
+            self.assertEqual(target_rows[0]["support_count"], "10")
 
     def test_write_phase2_exports_clears_author_scoped_outputs_when_author_now_has_zero_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

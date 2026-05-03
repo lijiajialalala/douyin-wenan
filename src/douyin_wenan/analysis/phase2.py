@@ -63,6 +63,89 @@ class Phase2AnalysisResult:
     evidence_records: list[dict[str, str]]
 
 
+ROW_LABEL_FIELDS = (
+    "work_id",
+    "author",
+    "title",
+    "txt_path",
+    "content_type",
+    "format",
+    "domain",
+    "primary_goal",
+    "style_family",
+    "hook_type",
+    "opening_object_presence",
+    "opening_problem_presence",
+    "opening_payoff_presence",
+    "argument_shape",
+    "example_density_band",
+    "cta_presence",
+    "cta_type",
+    "transcript_quality_gate",
+    "manual_reviewed",
+    "dedup_status",
+    "char_count",
+    "question_count",
+    "opening_excerpt",
+    "like_follower_ratio",
+    "favorite_follower_ratio",
+    "share_follower_ratio",
+    "comment_follower_ratio",
+    "composite_engagement_score_v1",
+    "author_relative_percentile",
+    "author_relative_band",
+)
+AUTHOR_BASELINE_FIELDS = (
+    "author",
+    "row_count",
+    "composite_mean",
+    "composite_median",
+    "high_band_threshold",
+    "low_band_threshold",
+    "high_row_count",
+    "mid_row_count",
+    "low_row_count",
+)
+AUTHOR_CONTRAST_FIELDS = (
+    "author",
+    "feature_name",
+    "feature_value",
+    "high_count",
+    "low_count",
+    "high_rate",
+    "low_rate",
+    "support_gap",
+    "high_row_count",
+    "low_row_count",
+    "suggested_outcome",
+)
+EVIDENCE_RECORD_FIELDS = (
+    "evidence_id",
+    "evidence_kind",
+    "work_id",
+    "author",
+    "scope",
+    "layer",
+    "content_type",
+    "format",
+    "domain",
+    "primary_goal",
+    "style_family",
+    "author_signature",
+    "feature_name",
+    "feature_value",
+    "metric_name",
+    "metric_value",
+    "support_count",
+    "contradiction_count",
+    "confidence_grade",
+    "ready_for_distillation",
+    "source_excerpt",
+    "evidence_refs",
+    "notes",
+)
+
+
 def parse_standard_transcript(path: Path) -> ParsedTranscript:
     metadata, body = parse_transcript_header(path)
     return ParsedTranscript(metadata=metadata, body=body.strip())
@@ -108,22 +191,53 @@ def analyze_phase2_rows(rows: list[dict[str, str]]) -> Phase2AnalysisResult:
     )
 
 
-def write_phase2_exports(result: Phase2AnalysisResult, analysis_dir: Path) -> dict[str, Path]:
+def write_phase2_exports(
+    result: Phase2AnalysisResult,
+    analysis_dir: Path,
+    *,
+    target_authors: tuple[str, ...] | None = None,
+) -> dict[str, Path]:
     labels_path = analysis_dir / "labels" / "row_labels.csv"
     baselines_path = analysis_dir / "baselines" / "author_baselines.csv"
     contrasts_path = analysis_dir / "contrasts" / "author_high_low.csv"
     evidence_path = analysis_dir / "evidence" / "evidence_records.csv"
 
-    target_authors = _target_authors_from_phase2_result(result)
-    _merge_rows(labels_path, result.labeled_rows, key_fields=("work_id",), target_authors=target_authors)
-    _merge_rows(baselines_path, result.author_baselines, key_fields=("author",), target_authors=target_authors)
+    effective_target_authors, replace_all = _resolve_target_authors(
+        explicit_target_authors=target_authors,
+        inferred_target_authors=_target_authors_from_phase2_result(result),
+    )
+    _merge_rows(
+        labels_path,
+        result.labeled_rows,
+        key_fields=("work_id",),
+        target_authors=effective_target_authors,
+        replace_all=replace_all,
+        empty_fieldnames=ROW_LABEL_FIELDS,
+    )
+    _merge_rows(
+        baselines_path,
+        result.author_baselines,
+        key_fields=("author",),
+        target_authors=effective_target_authors,
+        replace_all=replace_all,
+        empty_fieldnames=AUTHOR_BASELINE_FIELDS,
+    )
     _merge_rows(
         contrasts_path,
         result.author_high_low,
         key_fields=("author", "feature_name", "feature_value"),
-        target_authors=target_authors,
+        target_authors=effective_target_authors,
+        replace_all=replace_all,
+        empty_fieldnames=AUTHOR_CONTRAST_FIELDS,
     )
-    _merge_rows(evidence_path, result.evidence_records, key_fields=("evidence_id",), target_authors=target_authors)
+    _merge_rows(
+        evidence_path,
+        result.evidence_records,
+        key_fields=("evidence_id",),
+        target_authors=effective_target_authors,
+        replace_all=replace_all,
+        empty_fieldnames=EVIDENCE_RECORD_FIELDS,
+    )
 
     return {
         "labels": labels_path,
@@ -354,9 +468,11 @@ def _merge_rows(
     *,
     key_fields: tuple[str, ...],
     target_authors: tuple[str, ...],
+    replace_all: bool,
+    empty_fieldnames: tuple[str, ...],
 ) -> None:
     existing_rows = read_csv_rows(path) if path.exists() else []
-    retained_rows = [
+    retained_rows = [] if replace_all else [
         row
         for row in existing_rows
         if not target_authors or (row.get("author", "") or "").strip() not in target_authors
@@ -365,11 +481,12 @@ def _merge_rows(
     for row in retained_rows + new_rows:
         merged_by_key[_row_key(row, key_fields)] = row
     merged_rows = list(merged_by_key.values())
-    if not merged_rows:
-        return
-    fieldnames = _merged_fieldnames(retained_rows, new_rows)
-    sorted_rows = sorted(merged_rows, key=lambda row: _row_key(row, ("author", *key_fields)))
     ensure_parent_dir(path)
+    if not merged_rows:
+        write_csv_rows(path, list(empty_fieldnames), [])
+        return
+    fieldnames = _merged_fieldnames(retained_rows, new_rows) or list(empty_fieldnames)
+    sorted_rows = sorted(merged_rows, key=lambda row: _row_key(row, ("author", *key_fields)))
     write_csv_rows(path, fieldnames, sorted_rows)
 
 
@@ -407,6 +524,19 @@ def _merged_fieldnames(existing_rows: list[dict[str, str]], new_rows: list[dict[
             seen.add(field)
             fieldnames.append(field)
     return fieldnames
+
+
+def _resolve_target_authors(
+    *,
+    explicit_target_authors: tuple[str, ...] | None,
+    inferred_target_authors: tuple[str, ...],
+) -> tuple[tuple[str, ...], bool]:
+    if explicit_target_authors is not None:
+        cleaned = tuple(sorted({author.strip() for author in explicit_target_authors if author.strip()}))
+        return cleaned, False
+    if inferred_target_authors:
+        return inferred_target_authors, False
+    return (), True
 
 
 def _infer_domain(text: str) -> str:

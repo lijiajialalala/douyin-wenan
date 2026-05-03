@@ -9,6 +9,7 @@ from _bootstrap import ensure_src_path
 ensure_src_path()
 
 from douyin_wenan.analysis.phase2 import (
+    Phase2AnalysisResult,
     _infer_content_type,
     _infer_format,
     analyze_phase2_rows,
@@ -249,6 +250,82 @@ class Phase2AnalysisTests(unittest.TestCase):
             self.assertEqual({row["author"] for row in baseline_rows}, {"柏拉图的石头", "第二作者"})
             self.assertTrue(any(row["author"] == "柏拉图的石头" for row in evidence_rows))
             self.assertTrue(any(row["author"] == "第二作者" for row in evidence_rows))
+
+    def test_write_phase2_exports_clears_author_scoped_outputs_when_author_now_has_zero_rows(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            analysis_dir = tmp / "analysis"
+
+            author_a_rows = [
+                self._make_row(
+                    tmp=tmp,
+                    work_id="5001",
+                    title="为什么唐朝太监能废立天子",
+                    likes=220,
+                    comments=20,
+                    favorites=35,
+                    shares=15,
+                    duration_seconds=220,
+                    body="为什么同样是太监干政，唐朝太监却能废立天子？今天我们只说一个核心原因。",
+                ),
+                self._make_row(
+                    tmp=tmp,
+                    work_id="5002",
+                    title="晚唐皇帝总被太监压制",
+                    likes=15,
+                    comments=1,
+                    favorites=2,
+                    shares=1,
+                    duration_seconds=180,
+                    body="今天聊聊晚唐背景，先铺垫，再进入主题。",
+                ),
+            ]
+            author_b_rows = [
+                self._make_row(
+                    tmp=tmp,
+                    work_id="6001",
+                    title="AI 为什么总让人焦虑",
+                    likes=260,
+                    comments=22,
+                    favorites=40,
+                    shares=18,
+                    duration_seconds=210,
+                    body="为什么 AI 会让很多人焦虑？因为它同时冲击效率和判断边界。",
+                    author="第二作者",
+                    account_link="https://example.com/u/2",
+                ),
+                self._make_row(
+                    tmp=tmp,
+                    work_id="6002",
+                    title="AI 叙事为什么总是跑偏",
+                    likes=20,
+                    comments=2,
+                    favorites=3,
+                    shares=1,
+                    duration_seconds=170,
+                    body="今天继续补一点背景，慢慢进入主题。",
+                    author="第二作者",
+                    account_link="https://example.com/u/2",
+                ),
+            ]
+
+            write_phase2_exports(analyze_phase2_rows(author_a_rows), analysis_dir)
+            write_phase2_exports(analyze_phase2_rows(author_b_rows), analysis_dir)
+            write_phase2_exports(
+                Phase2AnalysisResult([], [], [], []),
+                analysis_dir,
+                target_authors=("柏拉图的石头",),
+            )
+
+            label_rows = read_csv_rows(analysis_dir / "labels" / "row_labels.csv")
+            baseline_rows = read_csv_rows(analysis_dir / "baselines" / "author_baselines.csv")
+            contrast_rows = read_csv_rows(analysis_dir / "contrasts" / "author_high_low.csv")
+            evidence_rows = read_csv_rows(analysis_dir / "evidence" / "evidence_records.csv")
+
+            self.assertEqual({row["author"] for row in label_rows}, {"第二作者"})
+            self.assertEqual({row["author"] for row in baseline_rows}, {"第二作者"})
+            self.assertEqual({row["author"] for row in contrast_rows}, {"第二作者"})
+            self.assertEqual({row["author"] for row in evidence_rows}, {"第二作者"})
 
     def _make_row(
         self,

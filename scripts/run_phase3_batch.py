@@ -43,7 +43,8 @@ def main() -> int:
             print(f"anti\t{card['card_id']}\t{card['title']}")
         return 0
 
-    paths = write_phase3_exports(result, config.analysis_dir)
+    target_authors = (args.author.strip(),) if args.author.strip() else None
+    paths = write_phase3_exports(result, config.analysis_dir, target_authors=target_authors)
     print(f"evidence_path={evidence_path}")
     print(f"skills={len(result.skill_cards)}")
     print(f"anti_skills={len(result.anti_skill_cards)}")

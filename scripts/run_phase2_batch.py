@@ -33,7 +33,8 @@ def main() -> int:
         return 0
 
     result = analyze_phase2_rows(selected)
-    paths = write_phase2_exports(result, config.analysis_dir)
+    target_authors = (args.author.strip(),) if args.author.strip() else None
+    paths = write_phase2_exports(result, config.analysis_dir, target_authors=target_authors)
 
     print(f"manifest_path={manifest_path}")
     print(f"selected={len(selected)}")

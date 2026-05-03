@@ -57,16 +57,29 @@ def distill_phase3_cards(
         skipped_records=skipped,
     )
 
-
-def write_phase3_exports(result: Phase3DistillationResult, analysis_dir: Path) -> dict[str, object]:
+def write_phase3_exports(
+    result: Phase3DistillationResult,
+    analysis_dir: Path,
+    *,
+    target_authors: tuple[str, ...] | None = None,
+) -> dict[str, object]:
     skills_dir = analysis_dir / "assets" / "skills"
     anti_dir = analysis_dir / "assets" / "anti_skills"
     exports_dir = analysis_dir / "exports"
-    target_authors = _target_authors_from_cards(result)
+    effective_target_authors, replace_all = _resolve_target_authors(
+        explicit_target_authors=target_authors,
+        inferred_target_authors=_target_authors_from_cards(result),
+    )
     summary_path = exports_dir / "phase3_candidates.csv"
     existing_summary_rows = read_csv_rows(summary_path) if summary_path.exists() else []
 
-    _delete_replaced_author_assets(existing_summary_rows, target_authors, skills_dir=skills_dir, anti_dir=anti_dir)
+    _delete_replaced_author_assets(
+        existing_summary_rows,
+        effective_target_authors,
+        replace_all=replace_all,
+        skills_dir=skills_dir,
+        anti_dir=anti_dir,
+    )
 
     skill_paths: list[Path] = []
     for card in result.skill_cards:
@@ -103,10 +116,10 @@ def write_phase3_exports(result: Phase3DistillationResult, analysis_dir: Path) -
         }
         for card in result.anti_skill_cards
     ]
-    retained_summary_rows = [
+    retained_summary_rows = [] if replace_all else [
         row
         for row in existing_summary_rows
-        if not target_authors or (row.get("source_author", "") or "").strip() not in target_authors
+        if not effective_target_authors or (row.get("source_author", "") or "").strip() not in effective_target_authors
     ]
     merged_summary_rows = _merge_summary_rows(retained_summary_rows, new_summary_rows)
     _write_summary(summary_path, merged_summary_rows)
@@ -484,9 +497,17 @@ def _delete_replaced_author_assets(
     existing_summary_rows: list[dict[str, str]],
     target_authors: tuple[str, ...],
     *,
+    replace_all: bool,
     skills_dir: Path,
     anti_dir: Path,
 ) -> None:
+    if replace_all:
+        for base_dir in (skills_dir, anti_dir):
+            if not base_dir.exists():
+                continue
+            for path in base_dir.glob("*.yaml"):
+                path.unlink()
+        return
     if not target_authors:
         return
     for row in existing_summary_rows:
@@ -523,3 +544,16 @@ def _merge_summary_rows(existing_rows: list[dict[str, str]], new_rows: list[dict
             continue
         merged_by_card_id[card_id] = row
     return list(merged_by_card_id.values())
+
+
+def _resolve_target_authors(
+    *,
+    explicit_target_authors: tuple[str, ...] | None,
+    inferred_target_authors: tuple[str, ...],
+) -> tuple[tuple[str, ...], bool]:
+    if explicit_target_authors is not None:
+        cleaned = tuple(sorted({author.strip() for author in explicit_target_authors if author.strip()}))
+        return cleaned, False
+    if inferred_target_authors:
+        return inferred_target_authors, False
+    return (), True

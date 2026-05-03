@@ -296,6 +296,90 @@ class Phase3DistillationTests(unittest.TestCase):
             self.assertEqual(len(summary_rows), 1)
             self.assertTrue(any(row["source_author"] == "作者C" for row in summary_rows))
 
+    def test_write_phase3_exports_clears_author_scoped_outputs_when_author_now_has_zero_cards(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            author_a = distill_phase3_cards(
+                [
+                    {
+                        "evidence_id": "ev_pos_a",
+                        "evidence_kind": "corroborated_pattern",
+                        "author": "作者A",
+                        "scope": "same_author",
+                        "layer": "style_family",
+                        "content_type": "concept_explainer",
+                        "format": "long_explainer",
+                        "domain": "history",
+                        "primary_goal": "save",
+                        "style_family": "question_hook",
+                        "author_signature": "",
+                        "feature_name": "style_family",
+                        "feature_value": "question_hook",
+                        "metric_name": "high_low_rate_gap",
+                        "metric_value": "0.25",
+                        "support_count": "6",
+                        "contradiction_count": "2",
+                        "confidence_grade": "E2",
+                        "ready_for_distillation": "yes",
+                        "source_excerpt": "为什么会这样？",
+                        "evidence_refs": "a1|a2",
+                        "notes": "author a",
+                    }
+                ]
+            )
+            author_b = distill_phase3_cards(
+                [
+                    {
+                        "evidence_id": "ev_neg_b",
+                        "evidence_kind": "rejected_pattern",
+                        "author": "作者B",
+                        "scope": "same_author",
+                        "layer": "general",
+                        "content_type": "concept_explainer",
+                        "format": "long_explainer",
+                        "domain": "ai",
+                        "primary_goal": "completion",
+                        "style_family": "cold_explainer",
+                        "author_signature": "",
+                        "feature_name": "hook_type",
+                        "feature_value": "statement",
+                        "metric_name": "high_low_rate_gap",
+                        "metric_value": "-0.25",
+                        "support_count": "7",
+                        "contradiction_count": "1",
+                        "confidence_grade": "E2",
+                        "ready_for_distillation": "yes",
+                        "source_excerpt": "今天聊聊一个背景。",
+                        "evidence_refs": "b1|b2",
+                        "notes": "author b",
+                    }
+                ]
+            )
+
+            write_phase3_exports(author_a, tmp)
+            write_phase3_exports(author_b, tmp)
+            author_a_card_ids = {card["card_id"] for card in author_a.skill_cards + author_a.anti_skill_cards}
+            author_b_card_ids = {card["card_id"] for card in author_b.skill_cards + author_b.anti_skill_cards}
+            write_phase3_exports(
+                distill_phase3_cards([]),
+                tmp,
+                target_authors=("作者A",),
+            )
+
+            summary_rows = read_csv_rows(tmp / "exports" / "phase3_candidates.csv")
+            self.assertEqual({row["source_author"] for row in summary_rows}, {"作者B"})
+            self.assertFalse(any("作者A" == row["source_author"] for row in summary_rows))
+            for card_id in author_a_card_ids:
+                self.assertFalse((tmp / "assets" / "skills" / f"{card_id}.yaml").exists())
+                self.assertFalse((tmp / "assets" / "anti_skills" / f"{card_id}.yaml").exists())
+            self.assertTrue(
+                any(
+                    (tmp / "assets" / "skills" / f"{card_id}.yaml").exists()
+                    or (tmp / "assets" / "anti_skills" / f"{card_id}.yaml").exists()
+                    for card_id in author_b_card_ids
+                )
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

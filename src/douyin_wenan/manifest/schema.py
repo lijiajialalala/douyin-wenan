@@ -109,7 +109,15 @@ class ManifestSchema:
             issues.append(ValidationIssue(level, "asr_text_path", "asr ok should set asr_text_path"))
         if row.get("txt_sync_status") == "ok" and not (row.get("txt_path") or "").strip():
             issues.append(ValidationIssue(level, "txt_path", "txt path should be set when txt sync is ok"))
-        for field in ["raw_video_path", "raw_audio_path", "asr_text_path", "legacy_txt_path", "txt_path"]:
+        for field in [
+            "raw_video_path",
+            "raw_audio_path",
+            "asr_raw_text_path",
+            "asr_text_path",
+            "asr_correction_json_path",
+            "legacy_txt_path",
+            "txt_path",
+        ]:
             value = (row.get(field, "") or "").strip()
             if value and not Path(value).is_absolute():
                 issues.append(ValidationIssue(level, field, f"{field} should be absolute when set"))

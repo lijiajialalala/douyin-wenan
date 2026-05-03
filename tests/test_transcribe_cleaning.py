@@ -14,9 +14,14 @@ class TranscribeCleaningTests(unittest.TestCase):
         cleaned = clean_transcript_text("🎼你好😊 [音乐] 世界♪")
         self.assertEqual(cleaned, "你好 世界")
 
-    def test_clean_transcript_text_applies_high_confidence_replacements(self) -> None:
-        cleaned = clean_transcript_text("阿尔蒙被老鸭毛反咬后当场科血。肺结和晚期的她以为庄富不会让你真负。")
-        self.assertEqual(cleaned, "阿尔芒被老亚芒反咬后当场咳血。肺结核晚期的她以为装富不会让你真富。")
+    def test_clean_transcript_text_does_not_apply_global_word_replacements(self) -> None:
+        source = "阿尔蒙被老鸭毛反咬后当场科血。肺结和晚期的她背着一个网袋回家。"
+        cleaned = clean_transcript_text(source)
+        self.assertEqual(cleaned, source)
+
+    def test_clean_transcript_text_keeps_bare_content_words(self) -> None:
+        cleaned = clean_transcript_text("他是这段旁白的作者。观众的笑声其实是表演的一部分。")
+        self.assertEqual(cleaned, "他是这段旁白的作者。观众的笑声其实是表演的一部分。")
 
     def test_clean_transcript_text_strips_trailing_douyin_marker(self) -> None:
         cleaned = clean_transcript_text("这是一段很长的正文内容，最后不该带平台标记。 抖音。")

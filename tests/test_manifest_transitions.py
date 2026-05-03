@@ -8,6 +8,7 @@ ensure_src_path()
 
 from douyin_wenan.manifest.transitions import (
     mark_asr_failed,
+    mark_asr_refreshed,
     mark_asr_succeeded,
     mark_download_failed,
     mark_download_succeeded,
@@ -30,9 +31,11 @@ class ManifestTransitionTests(unittest.TestCase):
             "asr_provider": "siliconflow",
             "asr_model": "model",
             "asr_time": "x",
+            "asr_raw_text_path": "asr.raw.txt",
             "asr_failure_count": "1",
             "asr_failure_class": "retryable",
             "asr_failure_code": "http_500",
+            "asr_correction_json_path": "asr.correction.json",
             "asr_char_count": "100",
             "asr_chars_per_minute": "200",
             "asr_quality_grade": "B",
@@ -50,6 +53,8 @@ class ManifestTransitionTests(unittest.TestCase):
         self.assertEqual(row["txt_sync_status"], "pending")
         self.assertEqual(row["dedup_status"], "unknown")
         self.assertEqual(row["raw_video_path"], "")
+        self.assertEqual(row["asr_raw_text_path"], "")
+        self.assertEqual(row["asr_correction_json_path"], "")
         self.assertEqual(row["txt_path"], "")
 
     def test_asr_ok_requires_download_ok(self) -> None:
@@ -99,7 +104,9 @@ class ManifestTransitionTests(unittest.TestCase):
         mark_asr_succeeded(
             row,
             raw_audio_path="D:/audio/a.mp3",
+            asr_raw_text_path="C:/tmp/a.raw.txt",
             asr_text_path="C:/tmp/a.txt",
+            asr_correction_json_path="C:/tmp/a.correction.json",
             asr_provider="siliconflow",
             asr_model="SenseVoiceSmall",
             asr_char_count=100,
@@ -109,7 +116,9 @@ class ManifestTransitionTests(unittest.TestCase):
             note="asr ok",
         )
         self.assertEqual(row["asr_status"], "ok")
+        self.assertEqual(row["asr_raw_text_path"], "C:/tmp/a.raw.txt")
         self.assertEqual(row["asr_text_path"], "C:/tmp/a.txt")
+        self.assertEqual(row["asr_correction_json_path"], "C:/tmp/a.correction.json")
         self.assertEqual(row["asr_failure_count"], "0")
         self.assertEqual(row["asr_failure_class"], "")
 
@@ -126,6 +135,38 @@ class ManifestTransitionTests(unittest.TestCase):
         self.assertIn("bad audio", row["notes"])
         self.assertEqual(row["asr_failure_count"], "1")
         self.assertEqual(row["asr_failure_class"], "blocked")
+
+    def test_mark_asr_refreshed_updates_provenance_and_resets_downstream(self) -> None:
+        row = {
+            "download_status": "ok",
+            "asr_status": "ok",
+            "txt_sync_status": "ok",
+            "txt_path": "D:/corpus/old.txt",
+            "dedup_status": "unique",
+            "dedup_group_id": "near-1",
+            "notes": "",
+        }
+        mark_asr_refreshed(
+            row,
+            raw_audio_path="D:/audio/a.mp3",
+            asr_raw_text_path="D:/snapshots/a.raw.txt",
+            asr_text_path="D:/snapshots/a.txt",
+            asr_correction_json_path="D:/snapshots/a.correction.json",
+            asr_provider="siliconflow",
+            asr_model="SenseVoiceSmall",
+            asr_char_count=88,
+            asr_chars_per_minute="180.00",
+            asr_quality_grade="B",
+            asr_quality_flags="",
+            note="rerun ok",
+        )
+        self.assertEqual(row["asr_status"], "ok")
+        self.assertEqual(row["asr_raw_text_path"], "D:/snapshots/a.raw.txt")
+        self.assertEqual(row["asr_text_path"], "D:/snapshots/a.txt")
+        self.assertEqual(row["txt_sync_status"], "pending")
+        self.assertEqual(row["txt_path"], "")
+        self.assertEqual(row["dedup_status"], "unknown")
+        self.assertEqual(row["dedup_group_id"], "")
 
 
 if __name__ == "__main__":

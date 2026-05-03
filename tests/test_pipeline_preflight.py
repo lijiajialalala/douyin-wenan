@@ -39,6 +39,8 @@ class PipelinePreflightTests(unittest.TestCase):
                         api_key_env="SILICONFLOW_API_KEY",
                         require_api_key=True,
                         require_ffmpeg=True,
+                        correction_api_key_env="OPENAI_API_KEY",
+                        require_correction_api_key=False,
                     )
         self.assertFalse(report.ok)
         self.assertIn("api_key", report.format_errors())

@@ -15,6 +15,8 @@ class ManifestSchemaTests(unittest.TestCase):
         self.assertIn("work_id", schema.fieldnames)
         self.assertIn("download_status", schema.fieldnames)
         self.assertIn("asr_status", schema.fieldnames)
+        self.assertIn("asr_raw_text_path", schema.fieldnames)
+        self.assertIn("asr_correction_json_path", schema.fieldnames)
         self.assertIn("txt_sync_status", schema.fieldnames)
         self.assertIn("dedup_status", schema.fieldnames)
 

@@ -106,7 +106,25 @@ tests/      validation for schema and state transitions
 
    ```powershell
    $env:SILICONFLOW_API_KEY="your-key"
+   $env:OPENAI_API_KEY="your-key"
    python scripts/run_asr_batch.py --author 无名书生 --limit 1
+   ```
+
+   ASR now writes three artifacts under `runtime_root/snapshots/asr_text/<author>/`:
+
+   - `{work_id}.raw.txt` raw provider transcript
+   - `{work_id}.txt` final transcript used downstream
+   - `{work_id}.correction.json` OpenAI correction audit or fallback record
+
+   To enable OpenAI correction, add a local override:
+
+   ```yaml
+   correction:
+     enabled: true
+     provider: "openai"
+     model: "gpt-4.1-mini"
+     base_url: "https://api.openai.com"
+     api_key_env: "OPENAI_API_KEY"
    ```
 
 9. Run the real txt sync batch:

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from _bootstrap import ensure_src_path
 
@@ -132,6 +134,7 @@ class RefreshBatchTests(unittest.TestCase):
             row.update(
                 {
                     "asr_text_path": str((tmp / "missing-asr.txt").resolve()),
+                    "asr_raw_text_path": str((tmp / "missing-asr.raw.txt").resolve()),
                     "asr_provider": "legacy-provider",
                     "asr_model": "legacy-model",
                     "asr_time": "2026-05-01T00:00:00+08:00",
@@ -180,6 +183,7 @@ class RefreshBatchTests(unittest.TestCase):
             row.update(
                 {
                     "asr_text_path": str(asr_text_path.resolve()),
+                    "asr_raw_text_path": str(asr_text_path.resolve()),
                     "asr_provider": "legacy-provider",
                     "asr_model": "legacy-model",
                     "asr_time": "2026-05-01T00:00:00+08:00",
@@ -212,8 +216,49 @@ class RefreshBatchTests(unittest.TestCase):
             self.assertIn("existing asr text recleaned", updated["notes"])
             self.assertEqual(
                 asr_text_path.read_text(encoding="utf-8"),
-                "阿尔芒被老亚芒反咬后当场咳血。这是一段足够长的正文内容，用来触发尾部平台标记清理。",
+                "🎼阿尔蒙被老鸭毛反咬后当场科血。这是一段足够长的正文内容，用来触发尾部平台标记清理。抖音。",
             )
+            self.assertTrue(updated["asr_raw_text_path"].endswith(".raw.txt"))
+            self.assertTrue(updated["asr_text_path"].endswith(".txt"))
+
+    def test_rerun_existing_failure_keeps_ok_state_and_records_note(self) -> None:
+        schema = load_manifest_schema()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            manifest_path = tmp / "douyin_manifest.csv"
+            repo = ManifestRepository(manifest_path, schema)
+            repo.init_empty()
+
+            row = _base_row(work_id="7633089780427091575")
+            row.update(
+                {
+                    "raw_video_path": str((tmp / "missing-video.mp4").resolve()),
+                    "asr_text_path": str((tmp / "existing-asr.txt").resolve()),
+                    "txt_sync_status": "ok",
+                    "txt_path": str((tmp / "runtime.txt").resolve()),
+                    "dedup_status": "unique",
+                }
+            )
+            repo.upsert_row(row)
+
+            with patch.dict(os.environ, {"SILICONFLOW_API_KEY": "test-key"}, clear=False):
+                result = _run_script(
+                    "run_asr_batch.py",
+                    "--manifest-path",
+                    str(manifest_path),
+                    "--rerun-existing",
+                    "--author",
+                    "无名书生",
+                    "--skip-preflight",
+                )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            updated = repo.index_by("work_id")["7633089780427091575"]
+            self.assertEqual(updated["asr_status"], "ok")
+            self.assertEqual(updated["txt_sync_status"], "ok")
+            self.assertEqual(updated["txt_path"], str((tmp / "runtime.txt").resolve()))
+            self.assertEqual(updated["dedup_status"], "unique")
+            self.assertIn("asr rerun failed:", updated["notes"])
 
     def test_rewrite_existing_failure_keeps_ok_state_and_records_note(self) -> None:
         schema = load_manifest_schema()
@@ -227,6 +272,7 @@ class RefreshBatchTests(unittest.TestCase):
             row.update(
                 {
                     "asr_text_path": str((tmp / "missing-asr.txt").resolve()),
+                    "asr_raw_text_path": str((tmp / "missing-asr.raw.txt").resolve()),
                     "txt_sync_status": "ok",
                     "txt_path": str((tmp / "runtime.txt").resolve()),
                     "dedup_status": "unique",

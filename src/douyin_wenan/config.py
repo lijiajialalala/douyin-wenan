@@ -20,6 +20,13 @@ class RuntimeConfig:
     asr_model: str
     asr_base_url: str
     asr_api_key_env: str
+    text_correction_enabled: bool
+    text_correction_provider: str
+    text_correction_model: str
+    text_correction_base_url: str
+    text_correction_api_key_env: str
+    text_correction_max_char_delta_ratio: float
+    text_correction_max_edit_count: int
 
 
 def _strip_quotes(value: str) -> str:
@@ -27,6 +34,43 @@ def _strip_quotes(value: str) -> str:
     if len(text) >= 2 and text[0] == text[-1] and text[0] in {"'", '"'}:
         return text[1:-1]
     return text
+
+
+def _parse_boolish(value: object, *, default: bool) -> bool:
+    if value is None:
+        return default
+    text = str(value).strip().lower()
+    if not text:
+        return default
+    if text in {"true", "1", "yes", "on"}:
+        return True
+    if text in {"false", "0", "no", "off"}:
+        return False
+    return default
+
+
+def _parse_floatish(value: object, *, default: float) -> float:
+    if value is None:
+        return default
+    text = str(value).strip()
+    if not text:
+        return default
+    try:
+        return float(text)
+    except ValueError:
+        return default
+
+
+def _parse_intish(value: object, *, default: int) -> int:
+    if value is None:
+        return default
+    text = str(value).strip()
+    if not text:
+        return default
+    try:
+        return int(text)
+    except ValueError:
+        return default
 
 
 def _parse_two_level_yaml(path: Path) -> dict[str, object]:
@@ -82,8 +126,9 @@ def load_runtime_config(config_path: Path | None = None) -> RuntimeConfig:
 
     runtime = raw.get("runtime", {})
     asr = raw.get("asr", {})
+    correction = raw.get("correction", {})
 
-    if not isinstance(runtime, dict) or not isinstance(asr, dict):
+    if not isinstance(runtime, dict) or not isinstance(asr, dict) or not isinstance(correction, dict):
         raise ValueError(f"Invalid config structure: {path}")
 
     legacy_input_root = Path(str(raw.get("legacy_input_root", "."))).expanduser()
@@ -100,6 +145,20 @@ def load_runtime_config(config_path: Path | None = None) -> RuntimeConfig:
     asr_model = str(asr.get("model", "")).strip()
     asr_base_url = str(asr.get("base_url", "https://api.siliconflow.cn")).strip() or "https://api.siliconflow.cn"
     asr_api_key_env = str(asr.get("api_key_env", "SILICONFLOW_API_KEY")).strip() or "SILICONFLOW_API_KEY"
+    text_correction_enabled = _parse_boolish(correction.get("enabled"), default=False)
+    text_correction_provider = str(correction.get("provider", "openai")).strip() or "openai"
+    text_correction_model = str(correction.get("model", "")).strip()
+    text_correction_base_url = (
+        str(correction.get("base_url", "https://api.openai.com")).strip() or "https://api.openai.com"
+    )
+    text_correction_api_key_env = (
+        str(correction.get("api_key_env", "OPENAI_API_KEY")).strip() or "OPENAI_API_KEY"
+    )
+    text_correction_max_char_delta_ratio = _parse_floatish(
+        correction.get("max_char_delta_ratio"),
+        default=0.08,
+    )
+    text_correction_max_edit_count = _parse_intish(correction.get("max_edit_count"), default=40)
 
     return RuntimeConfig(
         legacy_input_root=legacy_input_root,
@@ -116,4 +175,11 @@ def load_runtime_config(config_path: Path | None = None) -> RuntimeConfig:
         asr_model=asr_model,
         asr_base_url=asr_base_url,
         asr_api_key_env=asr_api_key_env,
+        text_correction_enabled=text_correction_enabled,
+        text_correction_provider=text_correction_provider,
+        text_correction_model=text_correction_model,
+        text_correction_base_url=text_correction_base_url,
+        text_correction_api_key_env=text_correction_api_key_env,
+        text_correction_max_char_delta_ratio=text_correction_max_char_delta_ratio,
+        text_correction_max_edit_count=text_correction_max_edit_count,
     )

@@ -10,20 +10,25 @@ ensure_src_path()
 configure_stdio()
 
 from douyin_wenan.config import load_runtime_config
-from douyin_wenan.manifest.filters import select_asr_completed, select_asr_pending, select_asr_retryable
+from douyin_wenan.manifest.filters import (
+    select_asr_completed,
+    select_asr_pending,
+    select_asr_reprocessable,
+    select_asr_retryable,
+)
 from douyin_wenan.manifest.repository import ManifestRepository
 from douyin_wenan.manifest.schema import load_manifest_schema
 from douyin_wenan.manifest.transitions import (
     append_note,
     mark_asr_failed,
+    mark_asr_refreshed,
     mark_asr_recleaned,
     mark_asr_succeeded,
     reset_asr,
 )
-from douyin_wenan.paths import ensure_parent_dir
 from douyin_wenan.pipeline.failures import classify_asr_failure, hydrate_rows
 from douyin_wenan.pipeline.preflight import assert_preflight, build_asr_preflight
-from douyin_wenan.transcribe.cleaning import clean_transcript_text
+from douyin_wenan.transcribe.postprocess import build_transcript_artifact_paths, process_transcript_text
 from douyin_wenan.transcribe.quality import grade_transcript
 
 
@@ -34,6 +39,11 @@ def parse_args():
         "--reclean-existing",
         action="store_true",
         help="Re-clean existing ASR text snapshots and refresh downstream state without calling the ASR API",
+    )
+    parser.add_argument(
+        "--rerun-existing",
+        action="store_true",
+        help="Re-run ASR from raw video for rows already marked as ASR-complete and rebuild transcript outputs",
     )
     parser.add_argument("--retry-failed", action="store_true", help="Retry rows whose asr_status is failed")
     parser.add_argument(
@@ -63,6 +73,8 @@ def main() -> int:
                 api_key_env=config.asr_api_key_env,
                 require_api_key=not args.reclean_existing,
                 require_ffmpeg=not args.reclean_existing,
+                correction_api_key_env=config.text_correction_api_key_env,
+                require_correction_api_key=config.text_correction_enabled,
             )
         )
     repo = ManifestRepository(manifest_path, load_manifest_schema())
@@ -70,8 +82,14 @@ def main() -> int:
     rows, hydration_changed = hydrate_rows(repo.load_rows())
     if args.reclean_existing and args.retry_failed:
         raise ValueError("--reclean-existing and --retry-failed cannot be used together")
+    if args.rerun_existing and args.retry_failed:
+        raise ValueError("--rerun-existing and --retry-failed cannot be used together")
+    if args.rerun_existing and args.reclean_existing:
+        raise ValueError("--rerun-existing and --reclean-existing cannot be used together")
 
-    if args.reclean_existing:
+    if args.rerun_existing:
+        selected = select_asr_reprocessable(rows, limit=args.limit, author=args.author)
+    elif args.reclean_existing:
         selected = select_asr_completed(rows, limit=args.limit, author=args.author)
     elif args.retry_failed:
         selected = select_asr_retryable(
@@ -85,7 +103,9 @@ def main() -> int:
         selected = select_asr_pending(rows, limit=args.limit, author=args.author)
     if args.dry_run:
         reference_field = "asr_text_path" if args.reclean_existing else "raw_video_path"
-        if args.reclean_existing:
+        if args.rerun_existing:
+            stage = "asr_rerun"
+        elif args.reclean_existing:
             stage = "asr_reclean"
         elif args.retry_failed:
             stage = "asr_retry"
@@ -101,6 +121,11 @@ def main() -> int:
         from douyin_wenan.transcribe.siliconflow import require_api_key
 
         api_key = require_api_key(config.asr_api_key_env)
+    correction_api_key = ""
+    if config.text_correction_enabled:
+        from douyin_wenan.transcribe.openai_correction import require_api_key
+
+        correction_api_key = require_api_key(config.text_correction_api_key_env)
 
     succeeded = 0
     failed = 0
@@ -112,9 +137,19 @@ def main() -> int:
         try:
             note = "asr response ok"
             raw_audio_path_value = ""
+            raw_text = ""
+            artifacts = build_transcript_artifact_paths(
+                asr_text_dir=config.asr_text_dir,
+                author=row_copy["author"],
+                work_id=row_copy["work_id"],
+            )
             if args.reclean_existing:
-                asr_text_path = Path(row_copy["asr_text_path"])
-                cleaned_text = clean_transcript_text(asr_text_path.read_text(encoding="utf-8"))
+                raw_source_path_text = (row_copy.get("asr_raw_text_path", "") or "").strip() or (
+                    row_copy.get("asr_text_path", "") or ""
+                ).strip()
+                if not raw_source_path_text:
+                    raise ValueError("No existing ASR text source found for reclean")
+                raw_text = Path(raw_source_path_text).read_text(encoding="utf-8")
                 raw_audio_path_value = (row_copy.get("raw_audio_path", "") or "").strip()
                 note = "existing asr text recleaned"
             else:
@@ -134,46 +169,85 @@ def main() -> int:
                     base_url=config.asr_base_url,
                     model=config.asr_model,
                 )
-                cleaned_text = clean_transcript_text(transcript.text)
-                asr_text_path = config.asr_text_dir / row_copy["author"] / f"{row_copy['work_id']}.txt"
-                ensure_parent_dir(asr_text_path)
+                raw_text = transcript.text
                 raw_audio_path_value = str(audio_path.resolve())
                 note = f"asr response {transcript.response_id or 'ok'}"
 
-            ensure_parent_dir(asr_text_path)
-            asr_text_path.write_text(cleaned_text, encoding="utf-8")
-            grade, flags, char_count, cpm_text = grade_transcript(cleaned_text, row_copy.get("duration_seconds", ""))
+            correction_runner = None
+            if config.text_correction_enabled:
+                from douyin_wenan.transcribe.openai_correction import correct_transcript_text
+
+                correction_runner = lambda normalized_text: correct_transcript_text(
+                    transcript_text=normalized_text,
+                    api_key=correction_api_key,
+                    base_url=config.text_correction_base_url,
+                    model=config.text_correction_model,
+                    max_char_delta_ratio=config.text_correction_max_char_delta_ratio,
+                    max_edit_count=config.text_correction_max_edit_count,
+                )
+            processed = process_transcript_text(
+                raw_text=raw_text,
+                raw_text_path=artifacts.raw_text_path,
+                final_text_path=artifacts.final_text_path,
+                correction_json_path=artifacts.correction_json_path if config.text_correction_enabled else None,
+                correction_runner=correction_runner,
+            )
+            grade, flags, char_count, cpm_text = grade_transcript(
+                processed.final_text,
+                row_copy.get("duration_seconds", ""),
+            )
             if args.reclean_existing:
                 mark_asr_recleaned(
                     row_copy,
                     raw_audio_path=raw_audio_path_value,
-                    asr_text_path=str(asr_text_path.resolve()),
+                    asr_raw_text_path=str(artifacts.raw_text_path.resolve()),
+                    asr_text_path=str(artifacts.final_text_path.resolve()),
+                    asr_correction_json_path=processed.correction_json_path,
                     asr_char_count=char_count,
                     asr_chars_per_minute=cpm_text,
                     asr_quality_grade=grade,
                     asr_quality_flags=flags,
-                    note=note,
+                    note=f"{note}; {processed.note}",
                 )
-            else:
-                mark_asr_succeeded(
+            elif args.rerun_existing:
+                mark_asr_refreshed(
                     row_copy,
                     raw_audio_path=raw_audio_path_value,
-                    asr_text_path=str(asr_text_path.resolve()),
+                    asr_raw_text_path=str(artifacts.raw_text_path.resolve()),
+                    asr_text_path=str(artifacts.final_text_path.resolve()),
+                    asr_correction_json_path=processed.correction_json_path,
                     asr_provider=config.asr_provider,
                     asr_model=config.asr_model,
                     asr_char_count=char_count,
                     asr_chars_per_minute=cpm_text,
                     asr_quality_grade=grade,
                     asr_quality_flags=flags,
-                    note=note,
+                    note=f"{note}; {processed.note}",
+                )
+            else:
+                mark_asr_succeeded(
+                    row_copy,
+                    raw_audio_path=raw_audio_path_value,
+                    asr_raw_text_path=str(artifacts.raw_text_path.resolve()),
+                    asr_text_path=str(artifacts.final_text_path.resolve()),
+                    asr_correction_json_path=processed.correction_json_path,
+                    asr_provider=config.asr_provider,
+                    asr_model=config.asr_model,
+                    asr_char_count=char_count,
+                    asr_chars_per_minute=cpm_text,
+                    asr_quality_grade=grade,
+                    asr_quality_flags=flags,
+                    note=f"{note}; {processed.note}",
                 )
             repo.upsert_row(row_copy)
             succeeded += 1
-            print(f"ok\t{row_copy['work_id']}\t{asr_text_path}")
+            print(f"ok\t{row_copy['work_id']}\t{artifacts.final_text_path}")
         except Exception as exc:
             failure_row = dict(original_row)
             if args.reclean_existing:
                 append_note(failure_row, f"asr reclean failed: {exc}")
+            elif args.rerun_existing:
+                append_note(failure_row, f"asr rerun failed: {exc}")
             else:
                 failure = classify_asr_failure(exc)
                 mark_asr_failed(

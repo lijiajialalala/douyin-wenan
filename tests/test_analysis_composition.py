@@ -137,6 +137,68 @@ class CompositionEngineTests(unittest.TestCase):
         self.assertIn("hook_a", plan["dropped_cards"])
         self.assertIn("hook_b", plan["dropped_cards"])
 
+    def test_compose_plan_rechecks_remaining_cards_after_explicit_override(self) -> None:
+        skill_cards = [
+            self._skill_card(
+                card_id="hook_a",
+                title="Hook A",
+                layer="general",
+                priority=100,
+                hardness="required",
+                slots=["hook"],
+            ),
+            self._skill_card(
+                card_id="hook_b",
+                title="Hook B",
+                layer="general",
+                priority=90,
+                hardness="required",
+                slots=["hook"],
+            ),
+            self._skill_card(
+                card_id="hook_c",
+                title="Hook C",
+                layer="general",
+                priority=10,
+                hardness="required",
+                slots=["hook"],
+                overrides=["hook_a"],
+            ),
+        ]
+
+        plan = compose_plan(
+            skill_cards,
+            [],
+            CompositionRequest(
+                domain="history",
+                format="long_explainer",
+                goal="completion",
+                content_type="concept_explainer",
+            ),
+        )
+
+        self.assertEqual(plan["status"], "resolved")
+        self.assertEqual(plan["slot_ownership"]["hook"], "hook_b")
+        self.assertEqual(plan["selected_cards"], ["hook_b"])
+        self.assertIn("hook_a", plan["dropped_cards"])
+        self.assertIn("hook_c", plan["dropped_cards"])
+        self.assertTrue(
+            any(
+                decision["slot"] == "hook"
+                and decision["winner"] == "hook_c"
+                and decision["dropped"] == "hook_a"
+                for decision in plan["override_decisions"]
+            )
+        )
+        self.assertTrue(
+            any(
+                decision["slot"] == "hook"
+                and decision["winner"] == "hook_b"
+                and decision["dropped"] == "hook_c"
+                for decision in plan["override_decisions"]
+            )
+        )
+
     def test_write_composition_plan_writes_schema_valid_yaml(self) -> None:
         skill_cards = [
             self._skill_card(
@@ -186,6 +248,7 @@ class CompositionEngineTests(unittest.TestCase):
         style_families: list[str] | None = None,
         author_scope: str = "",
         author_signatures: list[str] | None = None,
+        overrides: list[str] | None = None,
         status: str = "candidate",
     ) -> dict[str, object]:
         return {
@@ -207,7 +270,7 @@ class CompositionEngineTests(unittest.TestCase):
             "avoid_conditions": [],
             "slots": slots,
             "depends_on": [],
-            "overrides": [],
+            "overrides": overrides or [],
             "incompatible_with": [],
             "input_context": ["Context"],
             "execution_steps": ["Step"],

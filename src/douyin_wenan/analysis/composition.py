@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass
+from itertools import combinations
 from pathlib import Path
 
 import yaml
@@ -224,7 +225,23 @@ def _resolve_slot(
     dropped_cards: set[str] = set()
     override_decisions: list[dict[str, str]] = []
     unresolved_conflicts: list[str] = []
+    if not cards:
+        return None, dropped_cards, override_decisions, unresolved_conflicts
+
     ordered = sorted(cards, key=_resolution_sort_key)
+    override_filtered, override_dropped, override_conflicts = _apply_explicit_overrides(slot, ordered)
+    dropped_cards.update(override_dropped)
+    override_decisions.extend(_build_override_decisions(slot, override_filtered, override_dropped, ordered))
+    unresolved_conflicts.extend(override_conflicts)
+    if override_conflicts:
+        return None, dropped_cards, override_decisions, unresolved_conflicts
+    if not override_filtered:
+        unresolved_conflicts.append(
+            f"Slot '{slot}' has no remaining candidates after explicit overrides."
+        )
+        return None, dropped_cards, override_decisions, unresolved_conflicts
+
+    ordered = sorted(override_filtered, key=_resolution_sort_key)
     winner = ordered[0]
     winner_signature = _conflict_signature(winner)
     tied = [card for card in ordered if _conflict_signature(card) == winner_signature]
@@ -255,6 +272,71 @@ def _resolve_slot(
         )
         winner = resolution["winner"]
     return winner, dropped_cards, override_decisions, unresolved_conflicts
+
+
+def _apply_explicit_overrides(
+    slot: str,
+    cards: list[dict[str, object]],
+) -> tuple[list[dict[str, object]], set[str], list[str]]:
+    by_id = {_card_id(card): card for card in cards}
+    overridden_ids: set[str] = set()
+    conflicts: list[str] = []
+
+    for left, right in combinations(cards, 2):
+        left_id = _card_id(left)
+        right_id = _card_id(right)
+        left_overrides_right = right_id in _string_list(left.get("overrides"))
+        right_overrides_left = left_id in _string_list(right.get("overrides"))
+        if left_overrides_right and right_overrides_left:
+            conflicts.append(
+                f"Slot '{slot}' has mutually overriding cards: {left_id} and {right_id}"
+            )
+            return [], set(), conflicts
+
+    for card in cards:
+        for target_id in _string_list(card.get("overrides")):
+            if target_id in by_id and target_id != _card_id(card):
+                overridden_ids.add(target_id)
+
+    survivors = [card for card in cards if _card_id(card) not in overridden_ids]
+    return survivors, overridden_ids, conflicts
+
+
+def _build_override_decisions(
+    slot: str,
+    survivors: list[dict[str, object]],
+    overridden_ids: set[str],
+    cards: list[dict[str, object]],
+) -> list[dict[str, str]]:
+    if not overridden_ids:
+        return []
+
+    by_id = {_card_id(card): card for card in cards}
+    survivor_ids = {_card_id(card) for card in survivors}
+    decisions: list[dict[str, str]] = []
+
+    for overridden_id in sorted(overridden_ids):
+        overriders = [
+            card
+            for card in cards
+            if overridden_id in _string_list(card.get("overrides")) and _card_id(card) in survivor_ids
+        ]
+        if not overriders:
+            overriders = [
+                card for card in cards if overridden_id in _string_list(card.get("overrides"))
+            ]
+        if not overriders:
+            continue
+        winner = sorted(overriders, key=_resolution_sort_key)[0]
+        decisions.append(
+            {
+                "slot": slot,
+                "winner": _card_id(winner),
+                "dropped": overridden_id,
+                "reason": f"{_card_id(winner)} explicitly overrides {overridden_id}",
+            }
+        )
+    return decisions
 
 
 def _resolve_pair(slot: str, incumbent: dict[str, object], challenger: dict[str, object]) -> dict[str, object]:

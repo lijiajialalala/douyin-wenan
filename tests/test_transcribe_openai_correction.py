@@ -12,6 +12,7 @@ ensure_src_path()
 
 from douyin_wenan.transcribe.openai_correction import (
     OpenAICorrectionResult,
+    OpenAICorrectionRejected,
     build_api_url,
     correct_transcript_text,
 )
@@ -138,6 +139,75 @@ class OpenAICorrectionTests(unittest.TestCase):
                 model="gpt-test",
             )
 
+    @patch("douyin_wenan.transcribe.openai_correction.requests.post")
+    def test_correct_transcript_text_allows_low_density_edits_for_long_transcript(self, mock_post: MagicMock) -> None:
+        transcript_text = "古希腊神谱。" * 1400
+        response = MagicMock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "final_text": transcript_text,
+                                "edits": [{"value": f"edit-{index}"} for index in range(46)],
+                                "needs_review": True,
+                            },
+                            ensure_ascii=False,
+                        )
+                    }
+                }
+            ]
+        }
+        mock_post.return_value = response
+
+        result = correct_transcript_text(
+            transcript_text=transcript_text,
+            api_key="secret",
+            base_url="https://leleapi.top",
+            model="gpt-5.5",
+        )
+
+        self.assertEqual(result.final_text, transcript_text)
+        self.assertEqual(len(result.edits), 46)
+        self.assertTrue(result.needs_review)
+
+    @patch("douyin_wenan.transcribe.openai_correction.requests.post")
+    def test_correct_transcript_text_preserves_candidate_payload_when_edits_exceed_limit(self, mock_post: MagicMock) -> None:
+        transcript_text = "短文本。" * 20
+        response = MagicMock()
+        response.raise_for_status.return_value = None
+        response.json.return_value = {
+            "choices": [
+                {
+                    "message": {
+                        "content": json.dumps(
+                            {
+                                "final_text": transcript_text,
+                                "edits": [{"value": f"edit-{index}"} for index in range(41)],
+                                "needs_review": False,
+                            },
+                            ensure_ascii=False,
+                        )
+                    }
+                }
+            ]
+        }
+        mock_post.return_value = response
+
+        with self.assertRaises(OpenAICorrectionRejected) as ctx:
+            correct_transcript_text(
+                transcript_text=transcript_text,
+                api_key="secret",
+                base_url="https://leleapi.top",
+                model="gpt-5.5",
+            )
+
+        self.assertEqual(ctx.exception.candidate_final_text, transcript_text)
+        self.assertEqual(len(ctx.exception.candidate_edits), 41)
+        self.assertFalse(ctx.exception.candidate_needs_review)
+
 
 class TranscriptPostprocessTests(unittest.TestCase):
     def test_process_transcript_text_preserves_raw_and_writes_corrected_final(self) -> None:
@@ -177,3 +247,29 @@ class TranscriptPostprocessTests(unittest.TestCase):
             self.assertEqual((tmp / "final.txt").read_text(encoding="utf-8"), "他当场科血。抖音。")
             self.assertFalse(result.correction_applied)
             self.assertIn("bad correction", result.note)
+
+    def test_process_transcript_text_persists_rejected_candidate_in_audit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            result = process_transcript_text(
+                raw_text="他当场科血。",
+                raw_text_path=tmp / "raw.txt",
+                final_text_path=tmp / "final.txt",
+                correction_json_path=tmp / "correction.json",
+                correction_runner=lambda normalized: (_ for _ in ()).throw(
+                    OpenAICorrectionRejected(
+                        "too many edits",
+                        candidate_final_text="他当场咳血。",
+                        candidate_edits=[{"from": "科血", "to": "咳血"}],
+                        candidate_needs_review=True,
+                        raw_response_text='{"final_text":"他当场咳血。"}',
+                    )
+                ),
+            )
+
+            audit = json.loads((tmp / "correction.json").read_text(encoding="utf-8"))
+            self.assertEqual((tmp / "final.txt").read_text(encoding="utf-8"), "他当场科血。")
+            self.assertFalse(result.correction_applied)
+            self.assertEqual(audit["candidate"]["final_text"], "他当场咳血。")
+            self.assertEqual(audit["candidate"]["edits"][0]["from"], "科血")
+            self.assertTrue(audit["candidate"]["needs_review"])

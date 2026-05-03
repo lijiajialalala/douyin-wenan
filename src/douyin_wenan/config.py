@@ -27,6 +27,7 @@ class RuntimeConfig:
     text_correction_api_key_env: str
     text_correction_max_char_delta_ratio: float
     text_correction_max_edit_count: int
+    text_correction_max_edit_density_per_1000_chars: float
 
 
 def _strip_quotes(value: str) -> str:
@@ -159,6 +160,10 @@ def load_runtime_config(config_path: Path | None = None) -> RuntimeConfig:
         default=0.08,
     )
     text_correction_max_edit_count = _parse_intish(correction.get("max_edit_count"), default=40)
+    text_correction_max_edit_density_per_1000_chars = _parse_floatish(
+        correction.get("max_edit_density_per_1000_chars"),
+        default=6.0,
+    )
 
     return RuntimeConfig(
         legacy_input_root=legacy_input_root,
@@ -182,4 +187,5 @@ def load_runtime_config(config_path: Path | None = None) -> RuntimeConfig:
         text_correction_api_key_env=text_correction_api_key_env,
         text_correction_max_char_delta_ratio=text_correction_max_char_delta_ratio,
         text_correction_max_edit_count=text_correction_max_edit_count,
+        text_correction_max_edit_density_per_1000_chars=text_correction_max_edit_density_per_1000_chars,
     )

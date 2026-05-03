@@ -58,6 +58,10 @@ fields:
     required: false
     type: string
     description: Author name when the card is author-local
+  - name: author_signatures
+    required: false
+    type: string_list
+    description: Named author-signature overlays or signature families when relevant
   - name: trigger_conditions
     required: true
     type: string_list

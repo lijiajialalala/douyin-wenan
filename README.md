@@ -180,6 +180,22 @@ This writes runtime artifacts under `runtime_root/analysis/`:
 - `assets/anti_skills/*.yaml`
 - `exports/phase3_candidates.csv`
 
+## Composition Quickstart
+
+Resolve a composition plan from Phase 3 cards:
+
+```powershell
+python scripts/run_composition_plan.py --domain philosophy --format long_explainer --goal save --content-type book_digest --style-family question_hook --dry-run
+```
+
+Write the resolved plan to runtime output:
+
+```powershell
+python scripts/run_composition_plan.py --domain philosophy --format long_explainer --goal save --content-type book_digest --style-family question_hook
+```
+
+This writes runtime artifacts under `runtime_root/analysis/compositions/`.
+
 Transcript output policy:
 
 - corpus files stay `txt`

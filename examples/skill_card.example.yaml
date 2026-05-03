@@ -1,0 +1,47 @@
+card_id: skill_001
+title: Early Conflict Hook For Debate Format
+card_type: skill
+status: active
+layer: content_type
+priority: 80
+hardness: required
+content_types:
+  - comparison_review
+formats:
+  - debate_showdown
+domains:
+  - ai
+  - business
+goals:
+  - interaction
+style_families:
+  - strong_claim
+trigger_conditions:
+  - Use when the script is framed as a comparison or showdown between alternatives.
+  - Use when viewer retention depends on immediate conflict clarity.
+avoid_conditions:
+  - Avoid when the format is gentle companion storytelling with no opposition structure.
+slots:
+  - hook
+  - comparison
+input_context:
+  - The two sides or positions being compared.
+  - The comparison criterion that matters to the audience.
+execution_steps:
+  - Name both sides or state that a direct clash is about to happen.
+  - Define the comparison rule before giving any long explanation.
+  - Move to the first round or first criterion without delay.
+output_contract:
+  - The audience can identify the competing sides in the opening segment.
+  - The first round begins before the setup drifts into general background.
+evaluation_checks:
+  - Conflict is visible in the hook slot.
+  - The opening does not exceed the allowed setup length for this format.
+positive_examples:
+  - Which AI actually wins when speed matters more than polish?
+counter_examples:
+  - Today I want to talk slowly about two tools before I explain why they matter.
+evidence_refs:
+  - ev_001
+notes: Structure rule. It may override slower author-local setup habits.
+

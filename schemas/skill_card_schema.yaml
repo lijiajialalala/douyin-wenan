@@ -1,0 +1,123 @@
+version: 1
+description: Phase 3 reusable skill card schema
+
+fields:
+  - name: card_id
+    required: true
+    type: string
+    description: Stable unique ID for one reusable card
+  - name: title
+    required: true
+    type: string
+    description: Human-readable card title
+  - name: card_type
+    required: true
+    type: string
+    allowed: [skill, conditional_rule, signature_pattern, composition_template]
+    description: Reusable asset type covered by the base skill schema
+  - name: status
+    required: true
+    type: string
+    allowed: [candidate, validated, active, deprecated]
+    description: Lifecycle status of the card
+  - name: layer
+    required: true
+    type: string
+    allowed: [general, content_type, style_family, author_signature, cross_layer]
+    description: Layer the card belongs to
+  - name: priority
+    required: true
+    type: integer
+    description: Relative priority within a comparable class
+  - name: hardness
+    required: true
+    type: string
+    allowed: [required, preferred, optional]
+    description: Whether the card is mandatory or discretionary in composition
+  - name: content_types
+    required: false
+    type: string_list
+    description: Allowed content-type tags for routing
+  - name: formats
+    required: false
+    type: string_list
+    description: Allowed format tags for routing
+  - name: domains
+    required: false
+    type: string_list
+    description: Allowed domain tags for routing
+  - name: goals
+    required: false
+    type: string_list
+    description: Allowed goal tags for routing
+  - name: style_families
+    required: false
+    type: string_list
+    description: Related style-family tags when relevant
+  - name: author_scope
+    required: false
+    type: string
+    description: Author name when the card is author-local
+  - name: trigger_conditions
+    required: true
+    type: string_list
+    description: Conditions under which the card should be considered
+  - name: avoid_conditions
+    required: false
+    type: string_list
+    description: Conditions under which the card should not be applied
+  - name: slots
+    required: true
+    type: string_list
+    description: Script slots the card affects
+  - name: depends_on
+    required: false
+    type: string_list
+    description: Card IDs that must be present first
+  - name: overrides
+    required: false
+    type: string_list
+    description: Card IDs this card explicitly overrides
+  - name: incompatible_with
+    required: false
+    type: string_list
+    description: Card IDs that cannot coexist with this card
+  - name: input_context
+    required: true
+    type: string_list
+    description: Facts or materials needed to execute the card
+  - name: execution_steps
+    required: true
+    type: string_list
+    description: Ordered execution instructions
+  - name: output_contract
+    required: true
+    type: string_list
+    description: Observable outputs expected from correct execution
+  - name: evaluation_checks
+    required: true
+    type: string_list
+    description: Checks used to judge whether the card worked
+  - name: positive_examples
+    required: true
+    type: string_list
+    description: Positive examples or references
+  - name: counter_examples
+    required: true
+    type: string_list
+    description: Negative or boundary examples
+  - name: evidence_refs
+    required: true
+    type: string_list
+    description: IDs of supporting evidence records
+  - name: notes
+    required: false
+    type: string
+    description: Human-readable caveats or commentary
+
+row_invariants:
+  - rule: card_id must be unique within the card catalog
+  - rule: signature_pattern requires non-empty author_scope
+  - rule: composition_template should reference at least one slot and one routing dimension
+  - rule: active cards must include at least one evidence_ref and at least one evaluation_check
+

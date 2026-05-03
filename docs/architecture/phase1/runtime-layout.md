@@ -63,8 +63,15 @@ runtime_root/
         {work_id}_{title-segment}.txt
 
   analysis/
-    {author}/
-      *.md
+    labels/
+      *.csv
+    baselines/
+      *.csv
+    contrasts/
+      *.csv
+    evidence/
+      *.csv
+    exports/
       *.csv
 
   logs/

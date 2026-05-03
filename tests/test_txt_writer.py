@@ -63,7 +63,8 @@ class TxtWriterTests(unittest.TestCase):
         self.assertIn("文案字数：6", content)
         self.assertIn("疑问句数：1", content)
         self.assertIn("正文文案：\n你好？你好。", content)
-        self.assertIn("整理状态：ASR自动生成并清洗噪声，待人工校对", content)
+        self.assertNotIn("正文总结：", content)
+        self.assertNotIn("整理状态：", content)
 
     def test_sanitize_title_for_filename_removes_invalid_chars(self) -> None:
         self.assertEqual(sanitize_title_for_filename('#茶花女 的破产清算：捞女经济学'), "茶花女的破产清算")

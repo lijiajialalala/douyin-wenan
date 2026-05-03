@@ -16,6 +16,7 @@ from douyin_wenan.manifest.filters import select_dedup_pending
 from douyin_wenan.manifest.repository import ManifestRepository
 from douyin_wenan.manifest.schema import load_manifest_schema
 from douyin_wenan.manifest.transitions import mark_dedup_classification
+from douyin_wenan.pipeline.failures import hydrate_rows
 
 
 def parse_args():
@@ -30,11 +31,13 @@ def main() -> int:
     manifest_path = args.manifest_path or config.manifest_path
     repo = ManifestRepository(manifest_path, load_manifest_schema())
     repo.migrate_to_schema()
-    rows = repo.load_rows()
+    rows, hydration_changed = hydrate_rows(repo.load_rows())
     selected = select_dedup_pending(rows, limit=args.limit, author=args.author)
     if args.dry_run:
         print_batch_preview(stage="dedup", manifest_path=manifest_path, rows=selected, reference_field="txt_path")
         return 0
+    if hydration_changed:
+        repo.save_rows(rows)
 
     all_texts: list[tuple[str, str]] = []
     for row in rows:

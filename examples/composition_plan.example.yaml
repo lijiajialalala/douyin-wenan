@@ -1,0 +1,24 @@
+composition_id: comp_001
+domain: history
+format: long_explainer
+goal: completion
+content_type: historical_interpretation
+style_family: story_led
+selected_cards:
+  - historical_timeline_anchor
+  - long_explainer_reanchor_thesis
+  - story_led_scene_opening
+dropped_cards:
+  - author_signature_slow_warmup
+override_decisions:
+  - slot: hook
+    winner: historical_timeline_anchor
+    dropped: author_signature_slow_warmup
+    reason: format structure requires early conflict setup
+slot_ownership:
+  hook: historical_timeline_anchor
+  setup: story_led_scene_opening
+  claim: historical_timeline_anchor
+  close: long_explainer_reanchor_thesis
+status: resolved
+notes: Signature overlay was removed because it delayed the structural hook.

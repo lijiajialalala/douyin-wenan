@@ -1,0 +1,108 @@
+version: 1
+description: Phase 2 evidence record schema
+
+fields:
+  - name: evidence_id
+    required: true
+    type: string
+    description: Stable unique identifier for one evidence record
+  - name: evidence_kind
+    required: true
+    type: string
+    allowed: [row_label, aggregate_result, contrast_finding, corroborated_pattern, rejected_pattern]
+    description: Evidence record category
+  - name: work_id
+    required: false
+    type: string
+    description: Source work ID when the record points to one row
+  - name: author
+    required: false
+    type: string
+    description: Author scope when applicable
+  - name: scope
+    required: true
+    type: string
+    allowed: [single_row, same_author, cross_author, same_content_type, same_format, same_domain, mixed]
+    description: Comparison or observation scope
+  - name: layer
+    required: true
+    type: string
+    allowed: [general, content_type, style_family, author_signature, cross_layer]
+    description: Layer the evidence most directly informs
+  - name: content_type
+    required: false
+    type: string
+    description: Primary content type tag when present
+  - name: format
+    required: false
+    type: string
+    description: Primary format tag when present
+  - name: domain
+    required: false
+    type: string
+    description: Primary domain tag when present
+  - name: primary_goal
+    required: false
+    type: string
+    description: Primary goal tag when present
+  - name: style_family
+    required: false
+    type: string
+    description: Primary style-family tag when present
+  - name: author_signature
+    required: false
+    type: string
+    description: Signature tag when the evidence is author-local
+  - name: feature_name
+    required: true
+    type: string
+    description: The pattern or feature being discussed
+  - name: feature_value
+    required: false
+    type: string
+    description: Concrete observed value of the feature
+  - name: metric_name
+    required: false
+    type: string
+    description: Metric used to support the evidence
+  - name: metric_value
+    required: false
+    type: number
+    description: Numeric metric value when one exists
+  - name: support_count
+    required: true
+    type: integer
+    description: Number of supporting observations or grouped records
+  - name: contradiction_count
+    required: true
+    type: integer
+    description: Number of contradicting observations or grouped records
+  - name: confidence_grade
+    required: true
+    type: string
+    allowed: [E0, E1, E2, E3, E4]
+    description: Strength grade of the evidence
+  - name: ready_for_distillation
+    required: true
+    type: string
+    allowed: [yes, no]
+    description: Whether the record is eligible for Phase 3 review
+  - name: source_excerpt
+    required: false
+    type: string
+    description: Short excerpt or note anchoring the observation
+  - name: evidence_refs
+    required: false
+    type: string
+    description: Delimited IDs of supporting upstream records
+  - name: notes
+    required: false
+    type: string
+    description: Human-readable context or caveat
+
+row_invariants:
+  - rule: evidence_id must be unique within one evidence export
+  - rule: corroborated_pattern and rejected_pattern require support_count greater than zero
+  - rule: ready_for_distillation may only be yes when confidence_grade is E2 or stronger
+  - rule: contradiction_count must be zero or positive
+

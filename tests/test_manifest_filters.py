@@ -9,8 +9,10 @@ ensure_src_path()
 from douyin_wenan.manifest.filters import (
     select_asr_completed,
     select_asr_pending,
+    select_asr_retryable,
     select_dedup_pending,
     select_download_pending,
+    select_download_retryable,
     select_txt_sync_rebuildable,
     select_txt_sync_pending,
 )
@@ -26,7 +28,11 @@ def _row(**overrides: str) -> dict[str, str]:
         "asr_text_path": "",
         "txt_path": "",
         "download_status": "pending",
+        "download_failure_count": "0",
+        "download_failure_class": "",
         "asr_status": "pending",
+        "asr_failure_count": "0",
+        "asr_failure_class": "",
         "txt_sync_status": "pending",
         "dedup_status": "unknown",
     }
@@ -53,6 +59,24 @@ class ManifestFiltersTests(unittest.TestCase):
         selected = select_asr_pending(rows, author="无名书生", limit=1)
         self.assertEqual([row["work_id"] for row in selected], ["a-1"])
 
+    def test_select_download_retryable_requires_failed_status(self) -> None:
+        rows = [
+            _row(work_id="retry-1", download_status="failed"),
+            _row(work_id="skip-1", download_status="pending"),
+            _row(work_id="skip-2", download_status="failed", video_link=""),
+        ]
+        selected = select_download_retryable(rows)
+        self.assertEqual([row["work_id"] for row in selected], ["retry-1"])
+
+    def test_select_download_retryable_skips_blocked_and_exhausted_failures(self) -> None:
+        rows = [
+            _row(work_id="retry-1", download_status="failed", download_failure_class="retryable", download_failure_count="1"),
+            _row(work_id="skip-1", download_status="failed", download_failure_class="blocked", download_failure_count="1"),
+            _row(work_id="skip-2", download_status="failed", download_failure_class="retryable", download_failure_count="2"),
+        ]
+        selected = select_download_retryable(rows, max_failure_count=2)
+        self.assertEqual([row["work_id"] for row in selected], ["retry-1"])
+
     def test_select_asr_completed_requires_asr_text_path(self) -> None:
         rows = [
             _row(work_id="ok-1", asr_status="ok", asr_text_path="C:/tmp/1.txt"),
@@ -61,6 +85,23 @@ class ManifestFiltersTests(unittest.TestCase):
         ]
         selected = select_asr_completed(rows)
         self.assertEqual([row["work_id"] for row in selected], ["ok-1"])
+
+    def test_select_asr_retryable_requires_failed_status_and_download_ok(self) -> None:
+        rows = [
+            _row(work_id="retry-1", download_status="ok", asr_status="failed"),
+            _row(work_id="skip-1", download_status="pending", asr_status="failed"),
+            _row(work_id="skip-2", download_status="ok", asr_status="pending"),
+        ]
+        selected = select_asr_retryable(rows)
+        self.assertEqual([row["work_id"] for row in selected], ["retry-1"])
+
+    def test_select_asr_retryable_skips_blocked_failures_by_default(self) -> None:
+        rows = [
+            _row(work_id="retry-1", download_status="ok", asr_status="failed", asr_failure_class="retryable", asr_failure_count="1"),
+            _row(work_id="skip-1", download_status="ok", asr_status="failed", asr_failure_class="blocked", asr_failure_count="1"),
+        ]
+        selected = select_asr_retryable(rows)
+        self.assertEqual([row["work_id"] for row in selected], ["retry-1"])
 
     def test_select_txt_sync_pending_requires_asr_ok(self) -> None:
         rows = [

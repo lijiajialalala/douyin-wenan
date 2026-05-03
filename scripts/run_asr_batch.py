@@ -10,11 +10,19 @@ ensure_src_path()
 configure_stdio()
 
 from douyin_wenan.config import load_runtime_config
-from douyin_wenan.manifest.filters import select_asr_completed, select_asr_pending
+from douyin_wenan.manifest.filters import select_asr_completed, select_asr_pending, select_asr_retryable
 from douyin_wenan.manifest.repository import ManifestRepository
 from douyin_wenan.manifest.schema import load_manifest_schema
-from douyin_wenan.manifest.transitions import append_note, mark_asr_failed, mark_asr_recleaned, mark_asr_succeeded
+from douyin_wenan.manifest.transitions import (
+    append_note,
+    mark_asr_failed,
+    mark_asr_recleaned,
+    mark_asr_succeeded,
+    reset_asr,
+)
 from douyin_wenan.paths import ensure_parent_dir
+from douyin_wenan.pipeline.failures import classify_asr_failure, hydrate_rows
+from douyin_wenan.pipeline.preflight import assert_preflight, build_asr_preflight
 from douyin_wenan.transcribe.cleaning import clean_transcript_text
 from douyin_wenan.transcribe.quality import grade_transcript
 
@@ -27,6 +35,18 @@ def parse_args():
         action="store_true",
         help="Re-clean existing ASR text snapshots and refresh downstream state without calling the ASR API",
     )
+    parser.add_argument("--retry-failed", action="store_true", help="Retry rows whose asr_status is failed")
+    parser.add_argument(
+        "--include-nonretryable",
+        action="store_true",
+        help="Include blocked or terminal failed rows when retrying",
+    )
+    parser.add_argument(
+        "--max-failure-count",
+        type=int,
+        default=2,
+        help="Only auto-retry failed rows with fewer than this many failed batch attempts",
+    )
     return parser.parse_args()
 
 
@@ -34,19 +54,47 @@ def main() -> int:
     args = parse_args()
     config = load_runtime_config(args.config)
     manifest_path = args.manifest_path or config.manifest_path
+    if not args.skip_preflight:
+        assert_preflight(
+            build_asr_preflight(
+                manifest_path=manifest_path,
+                raw_audio_dir=config.raw_audio_dir,
+                asr_text_dir=config.asr_text_dir,
+                api_key_env=config.asr_api_key_env,
+                require_api_key=not args.reclean_existing,
+                require_ffmpeg=not args.reclean_existing,
+            )
+        )
     repo = ManifestRepository(manifest_path, load_manifest_schema())
     repo.migrate_to_schema()
-    rows = repo.load_rows()
-    selected = (
-        select_asr_completed(rows, limit=args.limit, author=args.author)
-        if args.reclean_existing
-        else select_asr_pending(rows, limit=args.limit, author=args.author)
-    )
+    rows, hydration_changed = hydrate_rows(repo.load_rows())
+    if args.reclean_existing and args.retry_failed:
+        raise ValueError("--reclean-existing and --retry-failed cannot be used together")
+
+    if args.reclean_existing:
+        selected = select_asr_completed(rows, limit=args.limit, author=args.author)
+    elif args.retry_failed:
+        selected = select_asr_retryable(
+            rows,
+            limit=args.limit,
+            author=args.author,
+            max_failure_count=args.max_failure_count,
+            include_nonretryable=args.include_nonretryable,
+        )
+    else:
+        selected = select_asr_pending(rows, limit=args.limit, author=args.author)
     if args.dry_run:
         reference_field = "asr_text_path" if args.reclean_existing else "raw_video_path"
-        stage = "asr_reclean" if args.reclean_existing else "asr"
+        if args.reclean_existing:
+            stage = "asr_reclean"
+        elif args.retry_failed:
+            stage = "asr_retry"
+        else:
+            stage = "asr"
         print_batch_preview(stage=stage, manifest_path=manifest_path, rows=selected, reference_field=reference_field)
         return 0
+    if hydration_changed:
+        repo.save_rows(rows)
 
     api_key = ""
     if not args.reclean_existing:
@@ -59,6 +107,8 @@ def main() -> int:
     for row in selected:
         original_row = dict(row)
         row_copy = dict(row)
+        if args.retry_failed:
+            reset_asr(row_copy, reason="asr retry requested")
         try:
             note = "asr response ok"
             raw_audio_path_value = ""
@@ -125,7 +175,13 @@ def main() -> int:
             if args.reclean_existing:
                 append_note(failure_row, f"asr reclean failed: {exc}")
             else:
-                mark_asr_failed(failure_row, reason=str(exc))
+                failure = classify_asr_failure(exc)
+                mark_asr_failed(
+                    failure_row,
+                    reason=str(exc),
+                    failure_class=failure.failure_class,
+                    failure_code=failure.failure_code,
+                )
             repo.upsert_row(failure_row)
             failed += 1
             print(f"failed\t{row_copy['work_id']}\t{exc}")

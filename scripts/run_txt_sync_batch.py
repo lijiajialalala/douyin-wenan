@@ -20,6 +20,8 @@ from douyin_wenan.normalize.txt_writer import (
     render_standard_transcript,
     write_standard_transcript,
 )
+from douyin_wenan.pipeline.failures import hydrate_rows
+from douyin_wenan.pipeline.preflight import assert_preflight, build_txt_sync_preflight
 
 
 def parse_args():
@@ -37,9 +39,11 @@ def main() -> int:
     args = parse_args()
     config = load_runtime_config(args.config)
     manifest_path = args.manifest_path or config.manifest_path
+    if not args.skip_preflight:
+        assert_preflight(build_txt_sync_preflight(manifest_path=manifest_path, corpus_dir=config.corpus_dir))
     repo = ManifestRepository(manifest_path, load_manifest_schema())
     repo.migrate_to_schema()
-    rows = repo.load_rows()
+    rows, hydration_changed = hydrate_rows(repo.load_rows())
     selected = (
         select_txt_sync_rebuildable(rows, limit=args.limit, author=args.author)
         if args.rewrite_existing
@@ -49,6 +53,8 @@ def main() -> int:
         stage = "txt_sync_rewrite" if args.rewrite_existing else "txt_sync"
         print_batch_preview(stage=stage, manifest_path=manifest_path, rows=selected, reference_field="asr_text_path")
         return 0
+    if hydration_changed:
+        repo.save_rows(rows)
 
     succeeded = 0
     failed = 0
@@ -93,6 +99,7 @@ def main() -> int:
     print(f"succeeded={succeeded}")
     print(f"failed={failed}")
     return 0
+
 
 def _cleanup_superseded_generated_txts(*, author_dir: Path, corpus_root: Path, work_id: str, canonical_path: Path) -> None:
     resolved_canonical = canonical_path.resolve(strict=False)

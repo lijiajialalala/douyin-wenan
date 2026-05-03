@@ -85,7 +85,7 @@ fields:
   - name: ready_for_distillation
     required: true
     type: string
-    allowed: [yes, no]
+    allowed: ["yes", "no"]
     description: Whether the record is eligible for Phase 3 review
   - name: source_excerpt
     required: false
@@ -93,8 +93,8 @@ fields:
     description: Short excerpt or note anchoring the observation
   - name: evidence_refs
     required: false
-    type: string
-    description: Delimited IDs of supporting upstream records
+    type: string_list
+    description: IDs of supporting upstream records
   - name: notes
     required: false
     type: string

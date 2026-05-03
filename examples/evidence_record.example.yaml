@@ -9,13 +9,13 @@ domain: philosophy
 primary_goal: save
 style_family: question_hook
 feature_name: opening_question_before_thesis
-feature_value: yes
+feature_value: "yes"
 metric_name: author_relative_percentile
 metric_value: 0.91
 support_count: 7
 contradiction_count: 2
 confidence_grade: E3
-ready_for_distillation: yes
+ready_for_distillation: "yes"
 source_excerpt: Opening directly raises a concrete audience doubt before thesis reveal.
 evidence_refs:
   - row_7631015254058683658

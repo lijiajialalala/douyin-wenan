@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
+from math import ceil
 
 import requests
 from requests import Response
@@ -25,6 +26,23 @@ class OpenAICorrectionResult:
     raw_response_text: str
 
 
+class OpenAICorrectionRejected(ValueError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        candidate_final_text: str,
+        candidate_edits: list[dict[str, object]],
+        candidate_needs_review: bool,
+        raw_response_text: str,
+    ) -> None:
+        super().__init__(message)
+        self.candidate_final_text = candidate_final_text
+        self.candidate_edits = candidate_edits
+        self.candidate_needs_review = candidate_needs_review
+        self.raw_response_text = raw_response_text
+
+
 def require_api_key(env_name: str) -> str:
     value = os.getenv(env_name, "").strip()
     if not value:
@@ -40,6 +58,7 @@ def correct_transcript_text(
     model: str,
     max_char_delta_ratio: float = 0.08,
     max_edit_count: int = 40,
+    max_edit_density_per_1000_chars: float = 6.0,
 ) -> OpenAICorrectionResult:
     endpoint = build_api_url(base_url, "/v1/chat/completions")
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
@@ -70,12 +89,26 @@ def correct_transcript_text(
     if not isinstance(edits, list):
         raise ValueError("OpenAI correction response edits must be a list")
     normalized_edits = [edit if isinstance(edit, dict) else {"value": edit} for edit in edits]
-    if len(normalized_edits) > max(1, max_edit_count):
-        raise ValueError(f"OpenAI correction returned too many edits: {len(normalized_edits)}")
+    allowed_edit_count = _max_allowed_edit_count(
+        original_text=transcript_text,
+        base_max_edit_count=max_edit_count,
+        max_edit_density_per_1000_chars=max_edit_density_per_1000_chars,
+    )
+    if len(normalized_edits) > allowed_edit_count:
+        raise OpenAICorrectionRejected(
+            f"OpenAI correction returned too many edits: {len(normalized_edits)} > allowed {allowed_edit_count}",
+            candidate_final_text=final_text,
+            candidate_edits=normalized_edits,
+            candidate_needs_review=bool(parsed.get("needs_review", False)),
+            raw_response_text=content,
+        )
     _validate_char_delta(
         original_text=transcript_text,
         final_text=final_text,
         max_char_delta_ratio=max_char_delta_ratio,
+        edits=normalized_edits,
+        needs_review=bool(parsed.get("needs_review", False)),
+        raw_response_text=content,
     )
     return OpenAICorrectionResult(
         final_text=final_text,
@@ -154,13 +187,42 @@ def _strip_code_fence(text: str) -> str:
     return text
 
 
-def _validate_char_delta(*, original_text: str, final_text: str, max_char_delta_ratio: float) -> None:
+def _validate_char_delta(
+    *,
+    original_text: str,
+    final_text: str,
+    max_char_delta_ratio: float,
+    edits: list[dict[str, object]],
+    needs_review: bool,
+    raw_response_text: str,
+) -> None:
     original_count = compact_char_count(original_text)
     final_count = compact_char_count(final_text)
     if original_count <= 0:
         return
     delta_ratio = abs(final_count - original_count) / original_count
     if delta_ratio > max(0.0, max_char_delta_ratio):
-        raise ValueError(
-            f"OpenAI correction changed transcript length too much: original={original_count} final={final_count}"
+        raise OpenAICorrectionRejected(
+            (
+                "OpenAI correction changed transcript length too much: "
+                f"original={original_count} final={final_count}"
+            ),
+            candidate_final_text=final_text,
+            candidate_edits=edits,
+            candidate_needs_review=needs_review,
+            raw_response_text=raw_response_text,
         )
+
+
+def _max_allowed_edit_count(
+    *,
+    original_text: str,
+    base_max_edit_count: int,
+    max_edit_density_per_1000_chars: float,
+) -> int:
+    base_limit = max(1, int(base_max_edit_count))
+    char_count = compact_char_count(original_text)
+    if char_count <= 0:
+        return base_limit
+    density_limit = ceil(max(0.0, max_edit_density_per_1000_chars) * char_count / 1000)
+    return max(base_limit, density_limit)

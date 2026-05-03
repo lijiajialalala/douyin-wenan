@@ -184,6 +184,7 @@ def main() -> int:
                     model=config.text_correction_model,
                     max_char_delta_ratio=config.text_correction_max_char_delta_ratio,
                     max_edit_count=config.text_correction_max_edit_count,
+                    max_edit_density_per_1000_chars=config.text_correction_max_edit_density_per_1000_chars,
                 )
             processed = process_transcript_text(
                 raw_text=raw_text,

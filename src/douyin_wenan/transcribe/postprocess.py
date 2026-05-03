@@ -78,14 +78,18 @@ def process_transcript_text(
             if correction_result.needs_review:
                 note += " needs_review"
         except Exception as exc:
+            candidate_payload = _candidate_payload_from_exception(exc)
             _write_correction_audit(
                 correction_json_path=correction_json_path,
-                payload={
+                payload=_drop_empty(
+                    {
                     "status": "fallback",
                     "input_text": normalized_text,
                     "final_text": normalized_text,
                     "error": str(exc),
-                },
+                    "candidate": candidate_payload,
+                    }
+                ),
             )
             correction_json_value = str(correction_json_path.resolve())
             note = f"openai correction fallback: {exc}"
@@ -103,3 +107,29 @@ def process_transcript_text(
 def _write_correction_audit(*, correction_json_path: Path, payload: dict[str, object]) -> None:
     ensure_parent_dir(correction_json_path)
     correction_json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _candidate_payload_from_exception(exc: Exception) -> dict[str, object] | None:
+    final_text = str(getattr(exc, "candidate_final_text", "") or "").strip()
+    edits = getattr(exc, "candidate_edits", None)
+    needs_review = getattr(exc, "candidate_needs_review", None)
+    raw_response_text = str(getattr(exc, "raw_response_text", "") or "").strip()
+
+    payload: dict[str, object] = {}
+    if final_text:
+        payload["final_text"] = final_text
+    if isinstance(edits, list) and edits:
+        payload["edits"] = edits
+    if isinstance(needs_review, bool):
+        payload["needs_review"] = needs_review
+    if raw_response_text:
+        payload["raw_response_text"] = raw_response_text
+    return payload or None
+
+
+def _drop_empty(payload: dict[str, object]) -> dict[str, object]:
+    return {
+        key: value
+        for key, value in payload.items()
+        if value not in ("", None, []) and not (isinstance(value, dict) and not value)
+    }

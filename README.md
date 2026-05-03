@@ -11,6 +11,13 @@ Current scope is intentionally narrow. Phase 1 only builds the foundation:
 5. standard transcript landing from existing corpus files
 6. transcript noise cleaning and canonical txt output
 
+Phase 2/3 foundation is now started:
+
+1. Phase 2 transcript parsing and row labeling
+2. author baseline and high/low contrast exports
+3. evidence record export for distillation review
+4. schema-aware validation for evidence, skill, anti-skill, and composition examples
+
 This repository does not store full raw media assets in Git. Runtime data stays
 outside version control. Only schemas, code, docs, fixtures, and small examples
 are kept in the repository.
@@ -142,6 +149,52 @@ tests/      validation for schema and state transitions
    ```
 
 The live manifest is written under `runtime_root/manifest/douyin_manifest.csv`.
+
+## Phase 2 Quickstart
+
+Run Phase 2 analysis on transcript-complete rows:
+
+```powershell
+python scripts/run_phase2_batch.py --author 柏拉图的石头
+```
+
+This writes runtime artifacts under `runtime_root/analysis/`:
+
+- `labels/row_labels.csv`
+- `baselines/author_baselines.csv`
+- `contrasts/author_high_low.csv`
+- `evidence/evidence_records.csv`
+
+## Phase 3 Quickstart
+
+Distill candidate assets from Phase 2 evidence:
+
+```powershell
+python scripts/run_phase3_batch.py --author 柏拉图的石头 --dry-run
+python scripts/run_phase3_batch.py --author 柏拉图的石头
+```
+
+This writes runtime artifacts under `runtime_root/analysis/`:
+
+- `assets/skills/*.yaml`
+- `assets/anti_skills/*.yaml`
+- `exports/phase3_candidates.csv`
+
+## Composition Quickstart
+
+Resolve a composition plan from Phase 3 cards:
+
+```powershell
+python scripts/run_composition_plan.py --domain philosophy --format long_explainer --goal save --content-type book_digest --style-family question_hook --dry-run
+```
+
+Write the resolved plan to runtime output:
+
+```powershell
+python scripts/run_composition_plan.py --domain philosophy --format long_explainer --goal save --content-type book_digest --style-family question_hook
+```
+
+This writes runtime artifacts under `runtime_root/analysis/compositions/`.
 
 Transcript output policy:
 

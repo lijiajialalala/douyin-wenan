@@ -25,3 +25,4 @@ correction:
   api_key_env: "OPENAI_API_KEY"
   max_char_delta_ratio: 0.08
   max_edit_count: 40
+  max_edit_density_per_1000_chars: 6.0

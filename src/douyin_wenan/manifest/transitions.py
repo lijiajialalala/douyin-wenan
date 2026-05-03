@@ -108,14 +108,26 @@ def reset_dedup(row: dict[str, str], reason: str | None = None) -> dict[str, str
 def mark_download_succeeded(row: dict[str, str], *, raw_video_path: str, note: str | None = None) -> dict[str, str]:
     row["raw_video_path"] = raw_video_path
     row["download_time"] = current_timestamp_text()
+    row["download_failure_count"] = "0"
+    row["download_failure_class"] = ""
+    row["download_failure_code"] = ""
     transition_download(row, "ok")
     if note:
         _append_note(row, note)
     return row
 
 
-def mark_download_failed(row: dict[str, str], *, reason: str) -> dict[str, str]:
+def mark_download_failed(
+    row: dict[str, str],
+    *,
+    reason: str,
+    failure_class: str = "",
+    failure_code: str = "",
+) -> dict[str, str]:
     row["raw_video_path"] = ""
+    row["download_failure_count"] = str(_increment_count(row.get("download_failure_count", "")))
+    row["download_failure_class"] = failure_class
+    row["download_failure_code"] = failure_code
     transition_download(row, "failed")
     _append_note(row, f"download failed: {reason}")
     return row
@@ -139,6 +151,9 @@ def mark_asr_succeeded(
     row["asr_provider"] = asr_provider
     row["asr_model"] = asr_model
     row["asr_time"] = current_timestamp_text()
+    row["asr_failure_count"] = "0"
+    row["asr_failure_class"] = ""
+    row["asr_failure_code"] = ""
     row["asr_char_count"] = str(asr_char_count)
     row["asr_chars_per_minute"] = asr_chars_per_minute
     row["asr_quality_grade"] = asr_quality_grade
@@ -174,9 +189,18 @@ def mark_asr_recleaned(
     return row
 
 
-def mark_asr_failed(row: dict[str, str], *, reason: str) -> dict[str, str]:
+def mark_asr_failed(
+    row: dict[str, str],
+    *,
+    reason: str,
+    failure_class: str = "",
+    failure_code: str = "",
+) -> dict[str, str]:
     row["raw_audio_path"] = ""
     row["asr_text_path"] = ""
+    row["asr_failure_count"] = str(_increment_count(row.get("asr_failure_count", "")))
+    row["asr_failure_class"] = failure_class
+    row["asr_failure_code"] = failure_code
     transition_asr(row, "failed")
     _append_note(row, f"asr failed: {reason}")
     return row
@@ -234,3 +258,13 @@ def _transition(
 def _append_note(row: dict[str, str], message: str) -> None:
     existing = (row.get("notes", "") or "").strip()
     row["notes"] = f"{existing} | {message}".strip(" |")
+
+
+def _increment_count(value: str | None) -> int:
+    text = (value or "").strip()
+    if not text:
+        return 1
+    try:
+        return int(text) + 1
+    except ValueError:
+        return 1

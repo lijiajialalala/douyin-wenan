@@ -1,0 +1,67 @@
+version: 1
+description: Resolved composition plan schema
+
+fields:
+  - name: composition_id
+    required: true
+    type: string
+    description: Stable unique identifier for one resolved composition plan
+  - name: domain
+    required: true
+    type: string
+    description: Primary domain routing input
+  - name: format
+    required: true
+    type: string
+    description: Primary format routing input
+  - name: goal
+    required: true
+    type: string
+    description: Primary goal routing input
+  - name: content_type
+    required: true
+    type: string
+    description: Primary content type routing input
+  - name: style_family
+    required: false
+    type: string
+    description: Primary style-family routing input when present
+  - name: author_signature
+    required: false
+    type: string
+    description: Optional author-signature overlay when present
+  - name: selected_cards
+    required: true
+    type: string_list
+    description: Card IDs selected into the final composition
+  - name: dropped_cards
+    required: false
+    type: string_list
+    description: Card IDs removed during conflict resolution
+  - name: override_decisions
+    required: false
+    type: object_list
+    description: Explicit override decisions produced during resolution
+  - name: slot_ownership
+    required: true
+    type: object
+    description: Mapping from script slot to winning card ID
+  - name: unresolved_conflicts
+    required: false
+    type: string_list
+    description: Conflicts that still require review
+  - name: status
+    required: true
+    type: string
+    allowed: [resolved, review_required, rejected]
+    description: Resolution status of the composition plan
+  - name: notes
+    required: false
+    type: string
+    description: Human-readable notes for the operator
+
+row_invariants:
+  - rule: composition_id must be unique within one composition export
+  - rule: resolved status requires non-empty selected_cards and slot_ownership
+  - rule: review_required status requires at least one unresolved_conflict
+

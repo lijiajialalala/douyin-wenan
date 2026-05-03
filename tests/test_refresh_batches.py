@@ -46,6 +46,80 @@ def _run_script(script_name: str, *args: str) -> subprocess.CompletedProcess[str
 
 
 class RefreshBatchTests(unittest.TestCase):
+    def test_download_dry_run_does_not_persist_hydrated_failure_metadata(self) -> None:
+        schema = load_manifest_schema()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            manifest_path = tmp / "douyin_manifest.csv"
+            repo = ManifestRepository(manifest_path, schema)
+            repo.init_empty()
+
+            row = schema.make_default_row()
+            row.update(
+                {
+                    "work_id": "7633089780427091570",
+                    "author": "无名书生",
+                    "platform": "douyin",
+                    "video_link": "https://www.douyin.com/video/7633089780427091570",
+                    "title": "标题A",
+                    "download_status": "failed",
+                    "notes": "download failed: 403 Client Error: Forbidden for url: https://example.com/video.mp4",
+                }
+            )
+            repo.upsert_row(row)
+
+            result = _run_script(
+                "run_download_batch.py",
+                "--manifest-path",
+                str(manifest_path),
+                "--retry-failed",
+                "--dry-run",
+                "--author",
+                "无名书生",
+                "--skip-preflight",
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("selected=0", result.stdout)
+            updated = repo.index_by("work_id")["7633089780427091570"]
+            self.assertEqual(updated["download_failure_count"], "0")
+            self.assertEqual(updated["download_failure_class"], "")
+            self.assertEqual(updated["download_failure_code"], "")
+
+    def test_asr_dry_run_does_not_persist_hydrated_failure_metadata(self) -> None:
+        schema = load_manifest_schema()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            manifest_path = Path(tmpdir) / "douyin_manifest.csv"
+            repo = ManifestRepository(manifest_path, schema)
+            repo.init_empty()
+
+            row = _base_row(work_id="7633089780427091571")
+            row.update(
+                {
+                    "asr_status": "failed",
+                    "notes": "asr failed: Missing required API key env: SILICONFLOW_API_KEY",
+                }
+            )
+            repo.upsert_row(row)
+
+            result = _run_script(
+                "run_asr_batch.py",
+                "--manifest-path",
+                str(manifest_path),
+                "--retry-failed",
+                "--dry-run",
+                "--author",
+                "无名书生",
+                "--skip-preflight",
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("selected=0", result.stdout)
+            updated = repo.index_by("work_id")["7633089780427091571"]
+            self.assertEqual(updated["asr_failure_count"], "0")
+            self.assertEqual(updated["asr_failure_class"], "")
+            self.assertEqual(updated["asr_failure_code"], "")
+
     def test_reclean_existing_failure_keeps_ok_state_and_records_note(self) -> None:
         schema = load_manifest_schema()
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -75,6 +149,7 @@ class RefreshBatchTests(unittest.TestCase):
                 "--reclean-existing",
                 "--author",
                 "无名书生",
+                "--skip-preflight",
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -122,6 +197,7 @@ class RefreshBatchTests(unittest.TestCase):
                 "--reclean-existing",
                 "--author",
                 "无名书生",
+                "--skip-preflight",
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)
@@ -165,6 +241,7 @@ class RefreshBatchTests(unittest.TestCase):
                 "--rewrite-existing",
                 "--author",
                 "无名书生",
+                "--skip-preflight",
             )
 
             self.assertEqual(result.returncode, 0, result.stderr)

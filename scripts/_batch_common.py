@@ -22,6 +22,7 @@ def build_batch_parser(description: str) -> argparse.ArgumentParser:
     parser.add_argument("--manifest-path", type=Path, default=None, help="Override manifest file path")
     parser.add_argument("--author", type=str, default="", help="Only select one author")
     parser.add_argument("--limit", type=int, default=0, help="Only select the first N rows")
+    parser.add_argument("--skip-preflight", action="store_true", help="Skip stage-specific preflight checks")
     return parser
 
 

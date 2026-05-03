@@ -15,6 +15,32 @@ def select_download_pending(
     )
 
 
+def select_download_retryable(
+    rows: list[dict[str, str]],
+    *,
+    limit: int = 0,
+    author: str | None = None,
+    max_failure_count: int = 2,
+    include_nonretryable: bool = False,
+) -> list[dict[str, str]]:
+    return _select_rows(
+        rows,
+        predicate=lambda row: (
+            _status(row, "download_status") == "failed"
+            and _has_text(row, "video_link")
+            and _is_retryable_failure(
+                row,
+                class_field="download_failure_class",
+                count_field="download_failure_count",
+                max_failure_count=max_failure_count,
+                include_nonretryable=include_nonretryable,
+            )
+        ),
+        limit=limit,
+        author=author,
+    )
+
+
 def select_asr_pending(
     rows: list[dict[str, str]],
     *,
@@ -24,6 +50,32 @@ def select_asr_pending(
     return _select_rows(
         rows,
         predicate=lambda row: _status(row, "download_status") == "ok" and _status(row, "asr_status") == "pending",
+        limit=limit,
+        author=author,
+    )
+
+
+def select_asr_retryable(
+    rows: list[dict[str, str]],
+    *,
+    limit: int = 0,
+    author: str | None = None,
+    max_failure_count: int = 2,
+    include_nonretryable: bool = False,
+) -> list[dict[str, str]]:
+    return _select_rows(
+        rows,
+        predicate=lambda row: (
+            _status(row, "download_status") == "ok"
+            and _status(row, "asr_status") == "failed"
+            and _is_retryable_failure(
+                row,
+                class_field="asr_failure_class",
+                count_field="asr_failure_count",
+                max_failure_count=max_failure_count,
+                include_nonretryable=include_nonretryable,
+            )
+        ),
         limit=limit,
         author=author,
     )
@@ -120,3 +172,28 @@ def _status(row: dict[str, str], field: str) -> str:
 
 def _has_text(row: dict[str, str], field: str) -> bool:
     return bool((row.get(field, "") or "").strip())
+
+
+def _is_retryable_failure(
+    row: dict[str, str],
+    *,
+    class_field: str,
+    count_field: str,
+    max_failure_count: int,
+    include_nonretryable: bool,
+) -> bool:
+    if include_nonretryable:
+        return True
+
+    failure_class = _status(row, class_field)
+    if failure_class not in {"", "retryable"}:
+        return False
+
+    failure_count_text = _status(row, count_field)
+    if not failure_count_text:
+        return True
+    try:
+        failure_count = int(failure_count_text)
+    except ValueError:
+        return False
+    return failure_count < max(1, max_failure_count)

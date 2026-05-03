@@ -1,0 +1,33 @@
+card_id: anti_001
+title: Slow Warmup Before Conflict
+status: active
+layer: general
+priority: 90
+hardness: required
+formats:
+  - debate_showdown
+  - long_explainer
+goals:
+  - completion
+  - interaction
+failure_pattern: The script spends too long warming up before it reveals the main problem or conflict.
+detection_signals:
+  - The first concrete problem statement appears late.
+  - The opening uses generic throat-clearing with no viewer stake.
+likely_causes:
+  - The writer is imitating one creator's pacing without copying the underlying structure.
+  - The writer assumes authority alone can hold attention.
+prevention_actions:
+  - Force the opening to declare object, problem, or payoff earlier.
+  - Drop any warmup sentence that does not change the viewer's decision to continue.
+bad_examples:
+  - Let me first give you some background before we slowly enter the real topic.
+repair_examples:
+  - If this one assumption is wrong, the whole argument collapses.
+evaluation_checks:
+  - A viewer can identify the core problem quickly.
+  - The opening contains a concrete stake instead of generic framing.
+evidence_refs:
+  - ev_001
+notes: Anti-skill cards are mandatory negative outputs from distillation.
+

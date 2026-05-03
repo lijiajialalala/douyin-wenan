@@ -13,6 +13,7 @@ configured `runtime_root`.
 ```text
 docs/
 schemas/
+examples/
 configs/
 src/
 scripts/
@@ -32,6 +33,11 @@ Allowed:
 - ADRs
 - runbooks
 
+Structure rule:
+- `docs/architecture/phase1/` contains corpus-foundation architecture
+- `docs/architecture/phase2-phase3/` contains analysis, distillation, and
+  composition architecture
+
 Not allowed:
 - runtime data
 - generated reports that will constantly churn
@@ -45,6 +51,7 @@ Allowed:
 - manifest schema definition
 - transcript template
 - future label schema definitions
+- composition plan schema
 
 Not allowed:
 - Python logic
@@ -88,6 +95,20 @@ Allowed:
 Not allowed:
 - large embedded business logic
 - duplicated logic that should live in `src/`
+
+### `examples/`
+
+Repository-safe serialized examples.
+
+Allowed:
+- example evidence records
+- example skill cards
+- example anti-skill cards
+- example composition plans
+
+Not allowed:
+- live runtime outputs
+- stale examples that no longer match schemas
 
 ### `data/`
 

@@ -9,7 +9,13 @@ from _bootstrap import ensure_src_path
 
 ensure_src_path()
 
-from douyin_wenan.ingest.download import build_output_path, extract_play_addr_url, resolve_media_url
+from douyin_wenan.ingest.download import (
+    build_candidate_media_urls,
+    build_output_path,
+    extract_play_addr_url,
+    resolve_media_url,
+    resolve_media_urls,
+)
 from douyin_wenan.manifest.transitions import mark_download_failed, mark_download_succeeded
 
 
@@ -38,6 +44,30 @@ class IngestDownloadTests(unittest.TestCase):
         session.get.return_value = response
         url = resolve_media_url(session, "https://www.iesdouyin.com/share/video/123/")
         self.assertEqual(url, "https://aweme.snssdk.com/aweme/v1/playwm/?video_id=abc")
+
+    def test_resolve_media_urls_prefers_play_before_playwm(self) -> None:
+        session = MagicMock()
+        response = MagicMock()
+        response.text = (
+            '<html>"play_addr":{"uri":"abc","url_list":['
+            '"https:\\u002F\\u002Faweme.snssdk.com\\u002Faweme\\u002Fv1\\u002Fplaywm\\u002F?video_id=abc"]}</html>'
+        )
+        response.raise_for_status.return_value = None
+        session.get.return_value = response
+        urls = resolve_media_urls(session, "https://www.iesdouyin.com/share/video/123/")
+        self.assertEqual(
+            urls,
+            [
+                "https://aweme.snssdk.com/aweme/v1/play/?video_id=abc",
+                "https://aweme.snssdk.com/aweme/v1/playwm/?video_id=abc",
+            ],
+        )
+
+    def test_build_candidate_media_urls_deduplicates(self) -> None:
+        self.assertEqual(
+            build_candidate_media_urls("https://example.com/video.mp4"),
+            ["https://example.com/video.mp4"],
+        )
 
     def test_mark_download_succeeded_sets_state_and_path(self) -> None:
         row = {"download_status": "pending", "raw_video_path": "", "download_time": "", "notes": ""}

@@ -30,11 +30,11 @@ system defect and must be removed over time.
 
 To avoid design drift, each document owns one kind of truth:
 
-- [manifest-schema.md](C:/projects/douyin-wenan/docs/architecture/manifest-schema.md):
+- [manifest-schema.md](C:/projects/douyin-wenan/docs/architecture/phase1/manifest-schema.md):
   field truth
-- [state-machine.md](C:/projects/douyin-wenan/docs/architecture/state-machine.md):
+- [state-machine.md](C:/projects/douyin-wenan/docs/architecture/phase1/state-machine.md):
   state truth
-- [script-contracts.md](C:/projects/douyin-wenan/docs/architecture/script-contracts.md):
+- [script-contracts.md](C:/projects/douyin-wenan/docs/architecture/phase1/script-contracts.md):
   execution truth
 
 ## Phase 1 Output

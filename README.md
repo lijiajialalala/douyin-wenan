@@ -34,10 +34,11 @@ The pipeline now separates:
 ```text
 docs/       architecture and ADRs
 schemas/    shared schemas and templates
+examples/   example serialized assets and plans
 configs/    example local config only
 src/        library code
 scripts/    CLI entrypoints
-data/       fixtures and examples only
+data/       fixtures and small repo-safe data only
 tests/      validation for schema and state transitions
 ```
 
@@ -129,5 +130,5 @@ Transcript output policy:
 - corpus files stay `txt`
 - new generated files use `{work_id}_{title-segment}.txt`
 - old corpus is read-only input and is not reused as output
-- details are documented in `docs/architecture/transcript-output.md`
-- runtime directory layout is documented in `docs/architecture/runtime-layout.md`
+- details are documented in `docs/architecture/phase1/transcript-output.md`
+- runtime directory layout is documented in `docs/architecture/phase1/runtime-layout.md`

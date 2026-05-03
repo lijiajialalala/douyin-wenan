@@ -89,6 +89,20 @@ columns:
     required: false
     type: string
     description: Timestamp of last download completion
+  - name: download_failure_count
+    required: false
+    type: integer
+    default: 0
+    description: Consecutive download failure count used by retry policy
+  - name: download_failure_class
+    required: false
+    type: string
+    allowed: [retryable, blocked, terminal]
+    description: Recovery class for the last download failure
+  - name: download_failure_code
+    required: false
+    type: string
+    description: Machine-readable code for the last download failure
   - name: asr_provider
     required: false
     type: string
@@ -107,6 +121,20 @@ columns:
     allowed: [pending, ok, failed]
     default: pending
     description: ASR stage status
+  - name: asr_failure_count
+    required: false
+    type: integer
+    default: 0
+    description: Consecutive ASR failure count used by retry policy
+  - name: asr_failure_class
+    required: false
+    type: string
+    allowed: [retryable, blocked, terminal]
+    description: Recovery class for the last ASR failure
+  - name: asr_failure_code
+    required: false
+    type: string
+    description: Machine-readable code for the last ASR failure
   - name: asr_char_count
     required: false
     type: integer
@@ -162,7 +190,9 @@ row_invariants:
 creation_defaults:
   platform: douyin
   download_status: pending
+  download_failure_count: 0
   asr_status: pending
+  asr_failure_count: 0
   manual_reviewed: no
   txt_sync_status: pending
   dedup_status: unknown

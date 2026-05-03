@@ -21,7 +21,7 @@ def require_api_key(env_name: str) -> str:
 
 
 def transcribe_audio_file(*, audio_path: Path, api_key: str, base_url: str, model: str) -> SiliconFlowTranscription:
-    endpoint = base_url.rstrip("/") + "/v1/audio/transcriptions"
+    endpoint = _build_api_url(base_url, "/v1/audio/transcriptions")
     headers = {"Authorization": f"Bearer {api_key}"}
     with audio_path.open("rb") as fh:
         files = {"file": (audio_path.name, fh, "audio/mpeg")}
@@ -33,3 +33,11 @@ def transcribe_audio_file(*, audio_path: Path, api_key: str, base_url: str, mode
     if not text:
         raise ValueError("SiliconFlow transcription response did not contain text")
     return SiliconFlowTranscription(text=text, response_id=str(payload.get("id", "")))
+
+
+def _build_api_url(base_url: str, path: str) -> str:
+    base = (base_url or "").rstrip("/")
+    suffix = path if path.startswith("/") else f"/{path}"
+    if base.endswith("/v1") and suffix.startswith("/v1/"):
+        return base + suffix[len("/v1") :]
+    return base + suffix

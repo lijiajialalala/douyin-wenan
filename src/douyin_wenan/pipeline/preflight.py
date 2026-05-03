@@ -42,6 +42,8 @@ def build_asr_preflight(
     api_key_env: str,
     require_api_key: bool,
     require_ffmpeg: bool,
+    correction_api_key_env: str = "",
+    require_correction_api_key: bool = False,
 ) -> PreflightReport:
     checks = [
         _check_manifest_parent(manifest_path),
@@ -50,6 +52,8 @@ def build_asr_preflight(
     ]
     if require_api_key:
         checks.append(_check_api_key(api_key_env))
+    if require_correction_api_key:
+        checks.append(_check_api_key(correction_api_key_env))
     if require_ffmpeg:
         checks.append(_check_ffmpeg())
     return PreflightReport(stage="asr", checks=tuple(checks))

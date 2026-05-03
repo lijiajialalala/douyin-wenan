@@ -67,10 +67,18 @@ columns:
     required: false
     type: string
     description: Absolute path to extracted audio asset
+  - name: asr_raw_text_path
+    required: false
+    type: string
+    description: Absolute path to raw transcript text returned by the ASR provider
   - name: asr_text_path
     required: false
     type: string
-    description: Absolute path to intermediate ASR transcript text
+    description: Absolute path to final transcript text used by downstream pipeline
+  - name: asr_correction_json_path
+    required: false
+    type: string
+    description: Absolute path to structured OpenAI correction audit JSON
   - name: legacy_txt_path
     required: false
     type: string

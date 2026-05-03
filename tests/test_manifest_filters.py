@@ -9,6 +9,7 @@ ensure_src_path()
 from douyin_wenan.manifest.filters import (
     select_asr_completed,
     select_asr_pending,
+    select_asr_reprocessable,
     select_asr_retryable,
     select_dedup_pending,
     select_download_pending,
@@ -84,6 +85,15 @@ class ManifestFiltersTests(unittest.TestCase):
             _row(work_id="skip-2", asr_status="pending", asr_text_path="C:/tmp/2.txt"),
         ]
         selected = select_asr_completed(rows)
+        self.assertEqual([row["work_id"] for row in selected], ["ok-1"])
+
+    def test_select_asr_reprocessable_requires_downloaded_video(self) -> None:
+        rows = [
+            _row(work_id="skip-1", download_status="ok", asr_status="ok", raw_video_path=""),
+            _row(work_id="skip-2", download_status="pending", asr_status="ok", raw_video_path="D:/raw/2.mp4"),
+            _row(work_id="ok-1", download_status="ok", asr_status="ok", raw_video_path="D:/raw/1.mp4"),
+        ]
+        selected = select_asr_reprocessable(rows)
         self.assertEqual([row["work_id"] for row in selected], ["ok-1"])
 
     def test_select_asr_retryable_requires_failed_status_and_download_ok(self) -> None:

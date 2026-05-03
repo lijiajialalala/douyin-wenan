@@ -77,7 +77,9 @@ def reset_asr(row: dict[str, str], reason: str | None = None) -> dict[str, str]:
     row["asr_provider"] = ""
     row["asr_model"] = ""
     row["asr_time"] = ""
+    row["asr_raw_text_path"] = ""
     row["asr_text_path"] = ""
+    row["asr_correction_json_path"] = ""
     row["asr_char_count"] = ""
     row["asr_chars_per_minute"] = ""
     row["asr_quality_grade"] = ""
@@ -137,7 +139,9 @@ def mark_asr_succeeded(
     row: dict[str, str],
     *,
     raw_audio_path: str,
+    asr_raw_text_path: str,
     asr_text_path: str,
+    asr_correction_json_path: str,
     asr_provider: str,
     asr_model: str,
     asr_char_count: int,
@@ -147,7 +151,9 @@ def mark_asr_succeeded(
     note: str | None = None,
 ) -> dict[str, str]:
     row["raw_audio_path"] = raw_audio_path
+    row["asr_raw_text_path"] = asr_raw_text_path
     row["asr_text_path"] = asr_text_path
+    row["asr_correction_json_path"] = asr_correction_json_path
     row["asr_provider"] = asr_provider
     row["asr_model"] = asr_model
     row["asr_time"] = current_timestamp_text()
@@ -168,7 +174,9 @@ def mark_asr_recleaned(
     row: dict[str, str],
     *,
     raw_audio_path: str,
+    asr_raw_text_path: str,
     asr_text_path: str,
+    asr_correction_json_path: str,
     asr_char_count: int,
     asr_chars_per_minute: str,
     asr_quality_grade: str,
@@ -178,12 +186,51 @@ def mark_asr_recleaned(
     if row.get("asr_status") != "ok":
         raise ValueError("Cannot mark ASR recleaned unless asr_status is ok")
     row["raw_audio_path"] = raw_audio_path
+    row["asr_raw_text_path"] = asr_raw_text_path
     row["asr_text_path"] = asr_text_path
+    row["asr_correction_json_path"] = asr_correction_json_path
     row["asr_char_count"] = str(asr_char_count)
     row["asr_chars_per_minute"] = asr_chars_per_minute
     row["asr_quality_grade"] = asr_quality_grade
     row["asr_quality_flags"] = asr_quality_flags
     reset_txt_sync(row, reason="asr text recleaned")
+    if note:
+        _append_note(row, note)
+    return row
+
+
+def mark_asr_refreshed(
+    row: dict[str, str],
+    *,
+    raw_audio_path: str,
+    asr_raw_text_path: str,
+    asr_text_path: str,
+    asr_correction_json_path: str,
+    asr_provider: str,
+    asr_model: str,
+    asr_char_count: int,
+    asr_chars_per_minute: str,
+    asr_quality_grade: str,
+    asr_quality_flags: str,
+    note: str | None = None,
+) -> dict[str, str]:
+    if row.get("asr_status") != "ok":
+        raise ValueError("Cannot mark ASR refreshed unless asr_status is ok")
+    row["raw_audio_path"] = raw_audio_path
+    row["asr_raw_text_path"] = asr_raw_text_path
+    row["asr_text_path"] = asr_text_path
+    row["asr_correction_json_path"] = asr_correction_json_path
+    row["asr_provider"] = asr_provider
+    row["asr_model"] = asr_model
+    row["asr_time"] = current_timestamp_text()
+    row["asr_failure_count"] = "0"
+    row["asr_failure_class"] = ""
+    row["asr_failure_code"] = ""
+    row["asr_char_count"] = str(asr_char_count)
+    row["asr_chars_per_minute"] = asr_chars_per_minute
+    row["asr_quality_grade"] = asr_quality_grade
+    row["asr_quality_flags"] = asr_quality_flags
+    reset_txt_sync(row, reason="asr rerun completed")
     if note:
         _append_note(row, note)
     return row
@@ -197,7 +244,9 @@ def mark_asr_failed(
     failure_code: str = "",
 ) -> dict[str, str]:
     row["raw_audio_path"] = ""
+    row["asr_raw_text_path"] = ""
     row["asr_text_path"] = ""
+    row["asr_correction_json_path"] = ""
     row["asr_failure_count"] = str(_increment_count(row.get("asr_failure_count", "")))
     row["asr_failure_class"] = failure_class
     row["asr_failure_code"] = failure_code

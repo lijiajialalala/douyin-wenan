@@ -95,6 +95,24 @@ def select_asr_completed(
     )
 
 
+def select_asr_reprocessable(
+    rows: list[dict[str, str]],
+    *,
+    limit: int = 0,
+    author: str | None = None,
+) -> list[dict[str, str]]:
+    return _select_rows(
+        rows,
+        predicate=lambda row: (
+            _status(row, "download_status") == "ok"
+            and _status(row, "asr_status") == "ok"
+            and _has_text(row, "raw_video_path")
+        ),
+        limit=limit,
+        author=author,
+    )
+
+
 def select_txt_sync_pending(
     rows: list[dict[str, str]],
     *,

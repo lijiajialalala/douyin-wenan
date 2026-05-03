@@ -59,6 +59,8 @@ class ParsedTranscript:
 class Phase2AnalysisResult:
     labeled_rows: list[dict[str, str]]
     author_baselines: list[dict[str, str]]
+    author_foundation_patterns: list[dict[str, str]]
+    route_foundation_patterns: list[dict[str, str]]
     author_high_low: list[dict[str, str]]
     evidence_records: list[dict[str, str]]
 
@@ -106,6 +108,31 @@ AUTHOR_BASELINE_FIELDS = (
     "mid_row_count",
     "low_row_count",
 )
+AUTHOR_FOUNDATION_FIELDS = (
+    "author",
+    "feature_name",
+    "feature_value",
+    "support_count",
+    "author_row_count",
+    "support_rate",
+    "route_content_type",
+    "route_format",
+    "route_goal",
+    "route_row_count",
+    "route_rate",
+    "foundation_gap",
+    "confidence_grade",
+)
+ROUTE_FOUNDATION_FIELDS = (
+    "route_content_type",
+    "route_format",
+    "route_goal",
+    "row_count",
+    "feature_name",
+    "feature_value",
+    "support_count",
+    "route_rate",
+)
 AUTHOR_CONTRAST_FIELDS = (
     "author",
     "feature_name",
@@ -122,6 +149,9 @@ AUTHOR_CONTRAST_FIELDS = (
 EVIDENCE_RECORD_FIELDS = (
     "evidence_id",
     "evidence_kind",
+    "evidence_origin",
+    "evidence_polarity",
+    "transfer_scope",
     "work_id",
     "author",
     "scope",
@@ -138,6 +168,15 @@ EVIDENCE_RECORD_FIELDS = (
     "metric_value",
     "support_count",
     "contradiction_count",
+    "support_prevalence",
+    "contrast_prevalence",
+    "baseline_prevalence",
+    "support_sample_size",
+    "contrast_sample_size",
+    "baseline_sample_size",
+    "route_content_type",
+    "route_format",
+    "route_goal",
     "confidence_grade",
     "ready_for_distillation",
     "source_excerpt",
@@ -162,10 +201,6 @@ def select_phase2_ready(
     for row in rows:
         if author_value and (row.get("author", "") or "").strip() != author_value:
             continue
-        if (row.get("download_status", "") or "").strip() != "ok":
-            continue
-        if (row.get("asr_status", "") or "").strip() != "ok":
-            continue
         if (row.get("txt_sync_status", "") or "").strip() != "ok":
             continue
         if (row.get("dedup_status", "") or "").strip() == "unknown":
@@ -181,11 +216,22 @@ def select_phase2_ready(
 def analyze_phase2_rows(rows: list[dict[str, str]]) -> Phase2AnalysisResult:
     labeled_rows = [_build_labeled_row(row) for row in rows]
     ranked_rows, author_baselines = _attach_author_relative_metrics(labeled_rows)
+    route_foundation_patterns = _build_route_foundation_patterns(ranked_rows)
+    author_foundation_patterns = _build_author_foundation_patterns(
+        ranked_rows,
+        route_foundation_patterns=route_foundation_patterns,
+    )
     author_high_low = _build_author_high_low_contrasts(ranked_rows)
-    evidence_records = _build_evidence_records(author_high_low, ranked_rows)
+    evidence_records = _build_evidence_records(
+        author_high_low,
+        ranked_rows,
+        author_foundation_patterns=author_foundation_patterns,
+    )
     return Phase2AnalysisResult(
         labeled_rows=ranked_rows,
         author_baselines=author_baselines,
+        author_foundation_patterns=author_foundation_patterns,
+        route_foundation_patterns=route_foundation_patterns,
         author_high_low=author_high_low,
         evidence_records=evidence_records,
     )
@@ -199,6 +245,8 @@ def write_phase2_exports(
 ) -> dict[str, Path]:
     labels_path = analysis_dir / "labels" / "row_labels.csv"
     baselines_path = analysis_dir / "baselines" / "author_baselines.csv"
+    author_foundations_path = analysis_dir / "baselines" / "author_foundation_patterns.csv"
+    route_foundations_path = analysis_dir / "baselines" / "route_foundation_patterns.csv"
     contrasts_path = analysis_dir / "contrasts" / "author_high_low.csv"
     evidence_path = analysis_dir / "evidence" / "evidence_records.csv"
 
@@ -223,6 +271,22 @@ def write_phase2_exports(
         empty_fieldnames=AUTHOR_BASELINE_FIELDS,
     )
     _merge_rows(
+        author_foundations_path,
+        result.author_foundation_patterns,
+        key_fields=("author", "feature_name", "feature_value", "route_content_type", "route_format", "route_goal"),
+        target_authors=effective_target_authors,
+        replace_all=replace_all,
+        empty_fieldnames=AUTHOR_FOUNDATION_FIELDS,
+    )
+    _merge_rows(
+        route_foundations_path,
+        result.route_foundation_patterns,
+        key_fields=("route_content_type", "route_format", "route_goal", "feature_name", "feature_value"),
+        target_authors=(),
+        replace_all=True,
+        empty_fieldnames=ROUTE_FOUNDATION_FIELDS,
+    )
+    _merge_rows(
         contrasts_path,
         result.author_high_low,
         key_fields=("author", "feature_name", "feature_value"),
@@ -242,6 +306,8 @@ def write_phase2_exports(
     return {
         "labels": labels_path,
         "baselines": baselines_path,
+        "author_foundations": author_foundations_path,
+        "route_foundations": route_foundations_path,
         "contrasts": contrasts_path,
         "evidence": evidence_path,
     }
@@ -397,15 +463,223 @@ def _build_author_high_low_contrasts(labeled_rows: list[dict[str, str]]) -> list
     return contrasts
 
 
+def _build_route_foundation_patterns(labeled_rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    rows_by_route: dict[tuple[str, str, str], list[dict[str, str]]] = {}
+    for row in labeled_rows:
+        rows_by_route.setdefault(_route_scope(row), []).append(row)
+
+    patterns: list[dict[str, str]] = []
+    for route_scope, route_rows in rows_by_route.items():
+        route_content_type, route_format, route_goal = route_scope
+        row_count = len(route_rows)
+        for feature_name in FEATURE_FIELDS:
+            values = sorted({(row.get(feature_name, "") or "").strip() for row in route_rows if (row.get(feature_name, "") or "").strip()})
+            for value in values:
+                support_count = sum(1 for row in route_rows if (row.get(feature_name, "") or "").strip() == value)
+                route_rate = support_count / row_count if row_count else 0.0
+                patterns.append(
+                    {
+                        "route_content_type": route_content_type,
+                        "route_format": route_format,
+                        "route_goal": route_goal,
+                        "row_count": str(row_count),
+                        "feature_name": feature_name,
+                        "feature_value": value,
+                        "support_count": str(support_count),
+                        "route_rate": _fmt_float(route_rate),
+                    }
+                )
+    return sorted(
+        patterns,
+        key=lambda row: (
+            row["route_content_type"],
+            row["route_format"],
+            row["route_goal"],
+            row["feature_name"],
+            row["feature_value"],
+        ),
+    )
+
+
+def _build_author_foundation_patterns(
+    labeled_rows: list[dict[str, str]],
+    *,
+    route_foundation_patterns: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    rows_by_author: dict[str, list[dict[str, str]]] = {}
+    for row in labeled_rows:
+        rows_by_author.setdefault(row["author"], []).append(row)
+
+    route_index = {
+        (
+            row["route_content_type"],
+            row["route_format"],
+            row["route_goal"],
+            row["feature_name"],
+            row["feature_value"],
+        ): row
+        for row in route_foundation_patterns
+    }
+
+    patterns: list[dict[str, str]] = []
+    for author, author_rows in rows_by_author.items():
+        if len(author_rows) < 4:
+            continue
+        rows_by_route: dict[tuple[str, str, str], list[dict[str, str]]] = {}
+        for row in author_rows:
+            rows_by_route.setdefault(_route_scope(row), []).append(row)
+
+        for route_scope, scoped_rows in rows_by_route.items():
+            author_scope_row_count = len(scoped_rows)
+            if author_scope_row_count < 6:
+                continue
+            for feature_name in FEATURE_FIELDS:
+                values = sorted(
+                    {
+                        (row.get(feature_name, "") or "").strip()
+                        for row in scoped_rows
+                        if (row.get(feature_name, "") or "").strip()
+                    }
+                )
+                for value in values:
+                    support_rows = [row for row in scoped_rows if (row.get(feature_name, "") or "").strip() == value]
+                    support_count = len(support_rows)
+                    support_rate = support_count / author_scope_row_count if author_scope_row_count else 0.0
+                    if support_count < 4 or support_rate < 0.55:
+                        continue
+
+                    route_row = route_index.get((*route_scope, feature_name, value))
+                    baseline_row_count = 0
+                    baseline_rate = 0.0
+                    foundation_gap = support_rate
+                    if route_row is not None:
+                        total_route_row_count = _to_int(route_row.get("row_count"))
+                        total_route_support_count = _to_int(route_row.get("support_count"))
+                        external_row_count = max(0, total_route_row_count - author_scope_row_count)
+                        external_support_count = max(0, total_route_support_count - support_count)
+                        if external_row_count >= 6:
+                            baseline_row_count = external_row_count
+                            baseline_rate = external_support_count / external_row_count
+                            foundation_gap = support_rate - baseline_rate
+
+                    if baseline_row_count > 0:
+                        if foundation_gap < 0.15:
+                            continue
+                    elif support_rate < 0.65:
+                        continue
+
+                    confidence_grade = _foundation_confidence_grade(
+                        support_rate=support_rate,
+                        foundation_gap=foundation_gap,
+                        route_row_count=baseline_row_count,
+                    )
+                    patterns.append(
+                        {
+                            "author": author,
+                            "feature_name": feature_name,
+                            "feature_value": value,
+                            "support_count": str(support_count),
+                            "author_row_count": str(author_scope_row_count),
+                            "support_rate": _fmt_float(support_rate),
+                            "route_content_type": route_scope[0],
+                            "route_format": route_scope[1],
+                            "route_goal": route_scope[2],
+                            "route_row_count": str(baseline_row_count),
+                            "route_rate": _fmt_float(baseline_rate),
+                            "foundation_gap": _fmt_float(foundation_gap),
+                            "confidence_grade": confidence_grade,
+                        }
+                    )
+    return sorted(
+        patterns,
+        key=lambda row: (
+            row["author"],
+            row["route_content_type"],
+            row["route_format"],
+            row["route_goal"],
+            row["feature_name"],
+            row["feature_value"],
+        ),
+    )
+
+
 def _build_evidence_records(
     contrasts: list[dict[str, str]],
     labeled_rows: list[dict[str, str]],
+    *,
+    author_foundation_patterns: list[dict[str, str]],
 ) -> list[dict[str, str]]:
     rows_by_author: dict[str, list[dict[str, str]]] = {}
     for row in labeled_rows:
         rows_by_author.setdefault(row["author"], []).append(row)
 
     evidence_records: list[dict[str, str]] = []
+    for foundation in author_foundation_patterns:
+        author = foundation["author"]
+        feature_name = foundation["feature_name"]
+        feature_value = foundation["feature_value"]
+        route_scope = (
+            foundation["route_content_type"],
+            foundation["route_format"],
+            foundation["route_goal"],
+        )
+        support_rows = [
+            row
+            for row in rows_by_author.get(author, [])
+            if (row.get(feature_name, "") or "").strip() == feature_value and _route_scope(row) == route_scope
+        ]
+        refs = "|".join(row["work_id"] for row in support_rows[:5])
+        source_excerpt = support_rows[0]["opening_excerpt"] if support_rows else ""
+        confidence_grade = foundation["confidence_grade"]
+        evidence_records.append(
+            {
+                "evidence_id": _hashed_id(
+                    "ev",
+                    author,
+                    foundation["route_content_type"],
+                    foundation["route_format"],
+                    foundation["route_goal"],
+                    feature_name,
+                    feature_value,
+                    "author_foundation_pattern",
+                ),
+                "evidence_kind": "author_foundation_pattern",
+                "evidence_origin": "foundation",
+                "evidence_polarity": "positive",
+                "transfer_scope": "author_local",
+                "work_id": "",
+                "author": author,
+                "scope": "same_author",
+                "layer": _evidence_layer_for_feature(feature_name),
+                "content_type": foundation["route_content_type"],
+                "format": foundation["route_format"],
+                "domain": _dominant_domain(support_rows),
+                "primary_goal": foundation["route_goal"],
+                "style_family": _dominant_style_family(support_rows),
+                "author_signature": "",
+                "feature_name": feature_name,
+                "feature_value": feature_value,
+                "metric_name": "author_route_prevalence_gap",
+                "metric_value": foundation["foundation_gap"],
+                "support_count": foundation["support_count"],
+                "contradiction_count": str(max(0, _to_int(foundation["author_row_count"]) - _to_int(foundation["support_count"]))),
+                "support_prevalence": foundation["support_rate"],
+                "contrast_prevalence": "",
+                "baseline_prevalence": foundation["route_rate"],
+                "support_sample_size": foundation["author_row_count"],
+                "contrast_sample_size": "",
+                "baseline_sample_size": foundation["route_row_count"],
+                "route_content_type": foundation["route_content_type"],
+                "route_format": foundation["route_format"],
+                "route_goal": foundation["route_goal"],
+                "confidence_grade": confidence_grade,
+                "ready_for_distillation": "yes" if confidence_grade in {"E2", "E3", "E4"} else "no",
+                "source_excerpt": source_excerpt,
+                "evidence_refs": refs,
+                "notes": _build_foundation_evidence_note(foundation),
+            }
+        )
+
     for contrast in contrasts:
         gap = _to_float(contrast.get("support_gap"))
         if abs(gap) < 0.15:
@@ -419,7 +693,7 @@ def _build_evidence_records(
         if abs(gap) >= 0.2:
             confidence_grade = "E2"
             ready = "yes"
-            kind = "corroborated_pattern" if support_is_high else "rejected_pattern"
+            kind = "differential_gain_pattern" if support_is_high else "negative_pattern"
         else:
             confidence_grade = "E1"
             ready = "no"
@@ -436,6 +710,9 @@ def _build_evidence_records(
             {
                 "evidence_id": _hashed_id("ev", author, feature_name, feature_value, kind),
                 "evidence_kind": kind,
+                "evidence_origin": "differential",
+                "evidence_polarity": "positive" if support_is_high else "negative",
+                "transfer_scope": "author_local",
                 "work_id": support_rows[0]["work_id"] if len(support_rows) == 1 else "",
                 "author": author,
                 "scope": "same_author",
@@ -452,6 +729,15 @@ def _build_evidence_records(
                 "metric_value": _fmt_float(gap),
                 "support_count": str(support_count),
                 "contradiction_count": str(contradiction_count),
+                "support_prevalence": contrast["high_rate"] if support_is_high else contrast["low_rate"],
+                "contrast_prevalence": contrast["low_rate"] if support_is_high else contrast["high_rate"],
+                "baseline_prevalence": "",
+                "support_sample_size": contrast["high_row_count"] if support_is_high else contrast["low_row_count"],
+                "contrast_sample_size": contrast["low_row_count"] if support_is_high else contrast["high_row_count"],
+                "baseline_sample_size": "",
+                "route_content_type": support_rows[0]["content_type"] if support_rows else "",
+                "route_format": support_rows[0]["format"] if support_rows else "",
+                "route_goal": support_rows[0]["primary_goal"] if support_rows else "",
                 "confidence_grade": confidence_grade,
                 "ready_for_distillation": ready,
                 "source_excerpt": source_excerpt,
@@ -496,6 +782,11 @@ def _row_key(row: dict[str, str], key_fields: tuple[str, ...]) -> tuple[str, ...
 
 def _target_authors_from_phase2_result(result: Phase2AnalysisResult) -> tuple[str, ...]:
     authors = {(_row.get("author", "") or "").strip() for _row in result.labeled_rows if (_row.get("author", "") or "").strip()}
+    authors.update(
+        (_row.get("author", "") or "").strip()
+        for _row in result.author_foundation_patterns
+        if (_row.get("author", "") or "").strip()
+    )
     authors.update(
         (_row.get("author", "") or "").strip()
         for _row in result.author_high_low
@@ -713,11 +1004,76 @@ def _evidence_layer_for_feature(feature_name: str) -> str:
 
 
 def _build_evidence_note(contrast: dict[str, str], *, kind: str) -> str:
-    direction = "high performers" if kind == "corroborated_pattern" else "low performers"
+    direction = "high performers" if kind == "differential_gain_pattern" else "low performers"
     return (
         f"Within-author contrast: {contrast['feature_name']}={contrast['feature_value']} appears more often in "
         f"{direction}. gap={contrast['support_gap']}"
     )
+
+
+def _build_foundation_evidence_note(foundation: dict[str, str]) -> str:
+    route_row_count = _to_int(foundation.get("route_row_count"))
+    if route_row_count <= 0:
+        return (
+            "Author foundation: "
+            f"{foundation['feature_name']}={foundation['feature_value']} stays common inside this author's matched route. "
+            "Current baseline support is author-local only."
+        )
+    return (
+        "Author foundation: "
+        f"{foundation['feature_name']}={foundation['feature_value']} stays common inside this author's matched route "
+        f"and exceeds the external route baseline. gap={foundation['foundation_gap']}"
+    )
+
+
+def _route_scope(row: dict[str, str]) -> tuple[str, str, str]:
+    return (
+        (row.get("content_type", "") or "").strip() or "unknown",
+        (row.get("format", "") or "").strip() or "unknown",
+        (row.get("primary_goal", "") or "").strip() or "unknown",
+    )
+
+
+def _dominant_route_scope(rows: list[dict[str, str]]) -> tuple[str, str, str]:
+    counts: dict[tuple[str, str, str], int] = {}
+    for row in rows:
+        scope = _route_scope(row)
+        counts[scope] = counts.get(scope, 0) + 1
+    if not counts:
+        return ("unknown", "unknown", "unknown")
+    return max(counts.items(), key=lambda item: (item[1], item[0]))[0]
+
+
+def _dominant_domain(rows: list[dict[str, str]]) -> str:
+    return _dominant_text_value(rows, "domain")
+
+
+def _dominant_style_family(rows: list[dict[str, str]]) -> str:
+    return _dominant_text_value(rows, "style_family")
+
+
+def _dominant_text_value(rows: list[dict[str, str]], field: str) -> str:
+    counts: dict[str, int] = {}
+    for row in rows:
+        value = (row.get(field, "") or "").strip()
+        if not value:
+            continue
+        counts[value] = counts.get(value, 0) + 1
+    if not counts:
+        return ""
+    return max(counts.items(), key=lambda item: (item[1], item[0]))[0]
+
+
+def _foundation_confidence_grade(*, support_rate: float, foundation_gap: float, route_row_count: int) -> str:
+    if route_row_count <= 0:
+        if support_rate >= 0.65:
+            return "E2"
+        return "E1"
+    if support_rate >= 0.7 and foundation_gap >= 0.25 and route_row_count >= 10:
+        return "E3"
+    if support_rate >= 0.55 and foundation_gap >= 0.15 and route_row_count >= 6:
+        return "E2"
+    return "E1"
 
 
 def _opening_excerpt(text: str) -> str:
@@ -747,6 +1103,16 @@ def _to_float(value: object) -> float:
         return float(text)
     except ValueError:
         return 0.0
+
+
+def _to_int(value: object) -> int:
+    text = str(value or "").strip()
+    if not text:
+        return 0
+    try:
+        return int(float(text))
+    except ValueError:
+        return 0
 
 
 def _fmt_float(value: float) -> str:

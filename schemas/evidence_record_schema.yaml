@@ -9,8 +9,34 @@ fields:
   - name: evidence_kind
     required: true
     type: string
-    allowed: [row_label, aggregate_result, contrast_finding, corroborated_pattern, rejected_pattern]
+    allowed:
+      [
+        row_label,
+        aggregate_result,
+        contrast_finding,
+        author_foundation_pattern,
+        route_foundation_pattern,
+        differential_gain_pattern,
+        negative_pattern,
+        cross_author_transfer_pattern,
+        rejected_pattern,
+      ]
     description: Evidence record category
+  - name: evidence_origin
+    required: false
+    type: string
+    allowed: [foundation, differential, route, transfer, rejected]
+    description: How the evidence was produced
+  - name: evidence_polarity
+    required: false
+    type: string
+    allowed: [positive, negative, mixed]
+    description: Whether the evidence points toward a positive, negative, or mixed conclusion
+  - name: transfer_scope
+    required: false
+    type: string
+    allowed: [author_local, route_local, cross_author]
+    description: How far the current evidence is expected to travel
   - name: work_id
     required: false
     type: string
@@ -77,6 +103,42 @@ fields:
     required: true
     type: integer
     description: Number of contradicting observations or grouped records
+  - name: support_prevalence
+    required: false
+    type: number
+    description: Prevalence of the feature in the supporting group
+  - name: contrast_prevalence
+    required: false
+    type: number
+    description: Prevalence of the feature in the contrasted group
+  - name: baseline_prevalence
+    required: false
+    type: number
+    description: Prevalence of the feature in the matched baseline scope
+  - name: support_sample_size
+    required: false
+    type: integer
+    description: Size of the supporting group
+  - name: contrast_sample_size
+    required: false
+    type: integer
+    description: Size of the contrasted group
+  - name: baseline_sample_size
+    required: false
+    type: integer
+    description: Size of the matched baseline group
+  - name: route_content_type
+    required: false
+    type: string
+    description: Route content-type scope when applicable
+  - name: route_format
+    required: false
+    type: string
+    description: Route format scope when applicable
+  - name: route_goal
+    required: false
+    type: string
+    description: Route goal scope when applicable
   - name: confidence_grade
     required: true
     type: string
@@ -102,7 +164,7 @@ fields:
 
 row_invariants:
   - rule: evidence_id must be unique within one evidence export
-  - rule: corroborated_pattern and rejected_pattern require support_count greater than zero
+  - rule: foundation, differential, negative, and rejected evidence require support_count greater than zero
   - rule: ready_for_distillation may only be yes when confidence_grade is E2 or stronger
   - rule: contradiction_count must be zero or positive
 

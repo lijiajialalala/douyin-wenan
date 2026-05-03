@@ -10,6 +10,11 @@ fields:
     required: true
     type: string
     description: Human-readable anti-skill title
+  - name: skill_subtype
+    required: false
+    type: string
+    allowed: [negative_pattern]
+    description: More specific anti-skill subtype used by the distillation pipeline
   - name: status
     required: true
     type: string
@@ -73,6 +78,11 @@ fields:
     required: true
     type: string_list
     description: Checks used to verify the anti-pattern has been avoided
+  - name: production_actionability
+    required: false
+    type: string
+    allowed: [direct, needs_translation, diagnostic_only]
+    description: Whether the anti-pattern can be turned into a writing guardrail directly
   - name: evidence_refs
     required: true
     type: string_list

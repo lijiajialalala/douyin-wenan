@@ -56,8 +56,8 @@ def distill_phase3_cards(
             continue
 
     return Phase3DistillationResult(
-        skill_cards=skill_cards,
-        anti_skill_cards=anti_skill_cards,
+        skill_cards=_consolidate_skill_cards(skill_cards),
+        anti_skill_cards=_merge_equivalent_cards(anti_skill_cards),
         skipped_records=skipped,
     )
 
@@ -226,6 +226,158 @@ def _supports_negative_skill(record: dict[str, str]) -> bool:
     return False
 
 
+def _consolidate_skill_cards(cards: list[dict[str, object]]) -> list[dict[str, object]]:
+    return _merge_equivalent_cards(_drop_less_specific_skill_cards(cards))
+
+
+def _drop_less_specific_skill_cards(cards: list[dict[str, object]]) -> list[dict[str, object]]:
+    specific_scopes: set[tuple[str, tuple[object, ...]]] = set()
+    for card in cards:
+        feature_name = str(card.get("_source_feature_name", ""))
+        feature_value = str(card.get("_source_feature_value", ""))
+        scope = _specificity_scope(card)
+        if feature_name == "cta_type" and feature_value in {"save", "follow", "interaction"}:
+            specific_scopes.add(("cta", scope))
+        if feature_name == "style_family" and feature_value == "question_hook":
+            specific_scopes.add(("question_hook", scope))
+        if feature_name == "style_family" and feature_value == "strong_claim":
+            specific_scopes.add(("claim_hook", scope))
+
+    retained: list[dict[str, object]] = []
+    for card in cards:
+        feature_name = str(card.get("_source_feature_name", ""))
+        feature_value = str(card.get("_source_feature_value", ""))
+        scope = _specificity_scope(card)
+        if feature_name == "cta_presence" and feature_value == "yes" and ("cta", scope) in specific_scopes:
+            continue
+        if feature_name == "hook_type" and feature_value == "question" and ("question_hook", scope) in specific_scopes:
+            continue
+        if feature_name == "hook_type" and feature_value == "claim" and ("claim_hook", scope) in specific_scopes:
+            continue
+        retained.append(card)
+    return retained
+
+
+def _specificity_scope(card: dict[str, object]) -> tuple[object, ...]:
+    return (
+        str(card.get("skill_subtype", "")),
+        str(card.get("_source_author", "")),
+        str(card.get("promotion_status", "")),
+        str(card.get("transferability_level", "")),
+        str(card.get("author_scope", "")),
+        tuple(_object_list(card.get("content_types", []))),
+        tuple(_object_list(card.get("formats", []))),
+        tuple(_object_list(card.get("domains", []))),
+        tuple(_object_list(card.get("goals", []))),
+    )
+
+
+def _merge_equivalent_cards(cards: list[dict[str, object]]) -> list[dict[str, object]]:
+    merged_by_key: dict[tuple[object, ...], dict[str, object]] = {}
+    for card in cards:
+        key = _equivalent_card_key(card)
+        existing = merged_by_key.get(key)
+        merged_by_key[key] = _copy_card(card) if existing is None else _merge_card(existing, card)
+    return list(merged_by_key.values())
+
+
+def _equivalent_card_key(card: dict[str, object]) -> tuple[object, ...]:
+    return (
+        str(card.get("card_type", "")),
+        str(card.get("skill_subtype", "")),
+        str(card.get("_source_author", "")),
+        str(card.get("_source_feature_name", "")),
+        str(card.get("_source_feature_value", "")),
+        str(card.get("layer", "")),
+        str(card.get("promotion_status", "")),
+        str(card.get("transferability_level", "")),
+        str(card.get("author_scope", "")),
+        tuple(_object_list(card.get("formats", []))),
+        tuple(_object_list(card.get("goals", []))),
+    )
+
+
+def _copy_card(card: dict[str, object]) -> dict[str, object]:
+    copied: dict[str, object] = {}
+    for key, value in card.items():
+        copied[key] = list(value) if isinstance(value, list) else value
+    return copied
+
+
+def _merge_card(left: dict[str, object], right: dict[str, object]) -> dict[str, object]:
+    merged = _copy_card(left)
+    for field in _MERGEABLE_CARD_LIST_FIELDS:
+        merged[field] = _unique_strings(
+            [*(_object_list(left.get(field, []))), *(_object_list(right.get(field, [])))]
+        )
+    merged["priority"] = max(_int_value(left.get("priority")), _int_value(right.get("priority")))
+    merged["status"] = _stronger_status(str(left.get("status", "")), str(right.get("status", "")))
+    return _refresh_readable_summary(merged)
+
+
+_MERGEABLE_CARD_LIST_FIELDS = {
+    "content_types",
+    "formats",
+    "domains",
+    "goals",
+    "style_families",
+    "trigger_conditions",
+    "avoid_conditions",
+    "input_context",
+    "execution_steps",
+    "output_contract",
+    "evaluation_checks",
+    "counter_examples",
+    "evidence_refs",
+    "misuse_risks",
+    "positive_examples",
+    "detection_signals",
+    "likely_causes",
+    "prevention_actions",
+    "repair_examples",
+}
+
+
+def _object_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item) for item in value if str(item).strip()]
+
+
+def _int_value(value: object) -> int:
+    try:
+        return int(str(value))
+    except ValueError:
+        return 0
+
+
+def _stronger_status(left: str, right: str) -> str:
+    rank = {"candidate": 1, "validated": 2, "active": 3}
+    return left if rank.get(left, 0) >= rank.get(right, 0) else right
+
+
+def _refresh_readable_summary(card: dict[str, object]) -> dict[str, object]:
+    feature_name = str(card.get("_source_feature_name", ""))
+    feature_value = str(card.get("_source_feature_value", ""))
+    if card.get("card_type") == "anti_skill" or card.get("skill_subtype") == "negative_pattern":
+        card["_summary_zh"] = (
+            f"{_anti_skill_title_zh(feature_name, feature_value)}。"
+            f"这类模式在当前证据里更常落在弱稿一侧，适用范围：{_card_route_text_zh(card)}。"
+        )
+        return card
+    skill_subtype = str(card.get("skill_subtype", ""))
+    base = {
+        "foundational_skill": "这更像该作者长期稳定在用的基础能力，不是只在高稿里偶然出现的技巧。",
+        "gain_skill": "这更像高稿比低稿更常出现的增益动作，适合当成提升项来用。",
+        "transferable_skill": "这条已经不只局限在单一作者，适合当成更可迁移的共性能力。",
+    }.get(skill_subtype, "")
+    card["_summary_zh"] = (
+        f"{_skill_title_zh(feature_name, feature_value, skill_subtype=skill_subtype)}。"
+        f"{base} 当前适用范围：{_card_route_text_zh(card)}。"
+    )
+    return card
+
+
 def _build_skill_card(record: dict[str, str], *, skill_subtype: str) -> dict[str, object]:
     feature_name = _text(record, "feature_name")
     feature_value = _text(record, "feature_value")
@@ -291,6 +443,7 @@ def _build_anti_skill_card(record: dict[str, str], *, skill_subtype: str) -> dic
     card = {
         "card_id": _card_id("anti", evidence_id, feature_name, feature_value),
         "title": _anti_skill_title(feature_name, feature_value),
+        "card_type": "anti_skill",
         "skill_subtype": skill_subtype,
         "status": _status_from_confidence(_text(record, "confidence_grade")),
         "layer": _text(record, "layer") or "general",
@@ -491,6 +644,9 @@ def _skill_title_zh(feature_name: str, feature_value: str, *, skill_subtype: str
 def _anti_skill_title(feature_name: str, feature_value: str) -> str:
     mapping = {
         ("hook_type", "statement"): "Statement Hook Without Viewer Tension",
+        ("opening_problem_presence", "no"): "Opening Without A Viewer Problem",
+        ("opening_payoff_presence", "no"): "Opening Without A Clear Payoff",
+        ("argument_shape", "straight_explainer"): "Flat Explanation Without Progression",
         ("cta_presence", "no"): "Missing CTA When The Goal Needs One",
     }
     return mapping.get((feature_name, feature_value), f"Avoid {feature_name}={feature_value} In Weak Patterns")
@@ -499,6 +655,9 @@ def _anti_skill_title(feature_name: str, feature_value: str) -> str:
 def _anti_skill_title_zh(feature_name: str, feature_value: str) -> str:
     mapping = {
         ("hook_type", "statement"): "不要用平铺直叙的弱开头",
+        ("opening_problem_presence", "no"): "开头不要缺少明确问题",
+        ("opening_payoff_presence", "no"): "开头不要只铺垫不交代看点",
+        ("argument_shape", "straight_explainer"): "不要一路平铺解释到底",
         ("cta_presence", "no"): "该收口时不要没有动作",
     }
     return mapping.get((feature_name, feature_value), f"避免 {feature_name}={feature_value} 这种弱稿模式")
@@ -627,6 +786,12 @@ def _production_actionability(feature_name: str) -> str:
 def _anti_failure_pattern(feature_name: str, feature_value: str) -> str:
     if feature_name == "hook_type" and feature_value == "statement":
         return "The opening states information plainly without enough viewer tension or conflict."
+    if feature_name == "opening_problem_presence" and feature_value == "no":
+        return "The opening does not name a viewer-facing problem, so the audience has little reason to lean in."
+    if feature_name == "opening_payoff_presence" and feature_value == "no":
+        return "The opening delays the payoff, so the value of continuing is unclear."
+    if feature_name == "argument_shape" and feature_value == "straight_explainer":
+        return "The body explains in a flat line without enough progression, contrast, or example movement."
     return f"The script leans on {feature_name}={feature_value} in patterns associated with weaker rows."
 
 
@@ -635,6 +800,21 @@ def _anti_detection_signals(feature_name: str, feature_value: str, record: dict[
         return [
             "The hook sounds like background exposition instead of a decision-driving tension.",
             "The script delays the real problem while opening with a flat statement.",
+        ]
+    if feature_name == "opening_problem_presence" and feature_value == "no":
+        return [
+            "The first few lines do not tell the viewer what problem or doubt is being solved.",
+            "The opening sounds like the author is introducing a topic for themselves.",
+        ]
+    if feature_name == "opening_payoff_presence" and feature_value == "no":
+        return [
+            "The first few lines do not tell the viewer what they will gain.",
+            "The opening asks for attention before making the payoff visible.",
+        ]
+    if feature_name == "argument_shape" and feature_value == "straight_explainer":
+        return [
+            "The body keeps explaining without clear steps, contrast, or example-driven turns.",
+            "The middle section has no obvious progression node.",
         ]
     return [
         f"{feature_name}={feature_value} appears in a weak opening or weak structural slot.",
@@ -648,6 +828,21 @@ def _anti_likely_causes(feature_name: str, feature_value: str) -> list[str]:
             "The writer is front-loading background instead of surfacing the stake.",
             "The writer is copying calm narration without copying the stronger structure underneath it.",
         ]
+    if feature_name == "opening_problem_presence" and feature_value == "no":
+        return [
+            "The writer starts from the topic instead of the viewer's concrete doubt.",
+            "The script assumes the audience already cares before it earns that attention.",
+        ]
+    if feature_name == "opening_payoff_presence" and feature_value == "no":
+        return [
+            "The writer is saving the value promise too late.",
+            "The opening has information but no clear reason to keep listening.",
+        ]
+    if feature_name == "argument_shape" and feature_value == "straight_explainer":
+        return [
+            "The writer is treating explanation as a sequence of facts instead of a guided progression.",
+            "The body lacks a planned step, contrast, or example rhythm.",
+        ]
     return [
         "The move was copied from surface style without checking its structural role.",
         "The script is using a habit that is too weak for the declared goal or format.",
@@ -660,6 +855,21 @@ def _anti_prevention_actions(feature_name: str, feature_value: str) -> list[str]
             "Replace the flat statement with a concrete question, conflict, or payoff.",
             "Cut any opening sentence that does not change the viewer's reason to continue.",
         ]
+    if feature_name == "opening_problem_presence" and feature_value == "no":
+        return [
+            "Name one concrete viewer-facing problem in the first three to five lines.",
+            "Make the next paragraph answer, sharpen, or complicate that problem.",
+        ]
+    if feature_name == "opening_payoff_presence" and feature_value == "no":
+        return [
+            "State the payoff early in a specific sentence.",
+            "Make sure the body actually delivers the promised payoff.",
+        ]
+    if feature_name == "argument_shape" and feature_value == "straight_explainer":
+        return [
+            "Turn the body into steps, contrast, or example-led movement.",
+            "Add a clear re-anchor sentence before moving to the close.",
+        ]
     return [
         f"Reduce or remove {feature_name}={feature_value} when it weakens the owning slot.",
         "Replace the weak move with a clearer structure-first alternative.",
@@ -669,6 +879,12 @@ def _anti_prevention_actions(feature_name: str, feature_value: str) -> list[str]
 def _anti_repair_examples(feature_name: str, feature_value: str) -> list[str]:
     if feature_name == "hook_type" and feature_value == "statement":
         return ["If this one mechanism stays in place, the whole power structure flips against the emperor."]
+    if feature_name == "opening_problem_presence" and feature_value == "no":
+        return ["Why does a smart person keep making the same bad decision after seeing the cost?"]
+    if feature_name == "opening_payoff_presence" and feature_value == "no":
+        return ["In the next two minutes, you will understand why this choice looked irrational but was structurally inevitable."]
+    if feature_name == "argument_shape" and feature_value == "straight_explainer":
+        return ["First look at the rule, then the exception, and finally the moment where the exception becomes the real rule."]
     return [f"Rewrite the slot so that {feature_name}={feature_value} no longer dominates the weak pattern."]
 
 
@@ -677,6 +893,21 @@ def _anti_evaluation_checks(feature_name: str, feature_value: str) -> list[str]:
         return [
             "The hook contains a visible stake instead of flat exposition.",
             "The audience can tell why they should keep listening before the body unfolds.",
+        ]
+    if feature_name == "opening_problem_presence" and feature_value == "no":
+        return [
+            "The opening names a concrete viewer-facing problem.",
+            "The body visibly works on that problem instead of drifting into topic introduction.",
+        ]
+    if feature_name == "opening_payoff_presence" and feature_value == "no":
+        return [
+            "The opening makes the payoff visible.",
+            "The body delivers the payoff instead of changing the promise midstream.",
+        ]
+    if feature_name == "argument_shape" and feature_value == "straight_explainer":
+        return [
+            "The body now has clear progression nodes.",
+            "The explanation no longer reads like one flat chain of facts.",
         ]
     return [f"Check that {feature_name}={feature_value} no longer weakens the owning slot."]
 

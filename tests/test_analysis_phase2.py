@@ -356,6 +356,103 @@ class Phase2AnalysisTests(unittest.TestCase):
             ]
             self.assertFalse(evidence_rows)
 
+    def test_analyze_phase2_rows_emits_route_and_cross_author_transfer_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            rows = []
+
+            for author, prefix, base_likes in (
+                ("柏拉图的石头", "xfer_a", 180),
+                ("第二作者", "xfer_b", 150),
+            ):
+                for idx in range(1, 7):
+                    rows.append(
+                        self._make_row(
+                            tmp=tmp,
+                            work_id=f"{prefix}_{idx}",
+                            title=f"制度机制拆解 {prefix} {idx}",
+                            likes=base_likes - idx,
+                            comments=12,
+                            favorites=18,
+                            shares=8,
+                            duration_seconds=210,
+                            body=(
+                                "为什么制度设计最后总会反噬自己？真正的关键，是执行权和解释权被绑在了一起。"
+                                "先看执行权，再看解释权，最后回到制度为什么会失控。关注我，下一条继续拆。"
+                            ),
+                            author=author,
+                            account_link=f"https://example.com/u/{prefix}",
+                        )
+                    )
+
+            result = analyze_phase2_rows(rows)
+
+            route_evidence = [
+                row
+                for row in result.evidence_records
+                if row["evidence_kind"] == "route_foundation_pattern"
+                and row["route_content_type"] == "concept_explainer"
+                and row["route_format"] == "long_explainer"
+                and row["route_goal"] == "follow"
+                and row["feature_name"] == "argument_shape"
+                and row["feature_value"] == "stepwise_explainer"
+            ]
+            self.assertEqual(len(route_evidence), 1)
+            self.assertEqual(route_evidence[0]["transfer_scope"], "route_local")
+            self.assertEqual(route_evidence[0]["support_count"], "12")
+            self.assertEqual(route_evidence[0]["support_sample_size"], "12")
+            self.assertEqual(route_evidence[0]["confidence_grade"], "E3")
+            self.assertEqual(route_evidence[0]["ready_for_distillation"], "yes")
+
+            transfer_evidence = [
+                row
+                for row in result.evidence_records
+                if row["evidence_kind"] == "cross_author_transfer_pattern"
+                and row["route_content_type"] == "concept_explainer"
+                and row["route_format"] == "long_explainer"
+                and row["route_goal"] == "follow"
+                and row["feature_name"] == "argument_shape"
+                and row["feature_value"] == "stepwise_explainer"
+            ]
+            self.assertEqual(len(transfer_evidence), 1)
+            self.assertEqual(transfer_evidence[0]["author"], "多作者")
+            self.assertEqual(transfer_evidence[0]["transfer_scope"], "cross_author")
+            self.assertEqual(transfer_evidence[0]["scope"], "cross_author")
+            self.assertEqual(transfer_evidence[0]["support_count"], "12")
+            self.assertEqual(transfer_evidence[0]["confidence_grade"], "E3")
+            self.assertEqual(transfer_evidence[0]["ready_for_distillation"], "yes")
+
+    def test_analyze_phase2_rows_does_not_emit_cross_author_transfer_from_one_author(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            rows = [
+                self._make_row(
+                    tmp=tmp,
+                    work_id=f"single_{idx}",
+                    title=f"制度机制拆解 {idx}",
+                    likes=180 - idx,
+                    comments=12,
+                    favorites=18,
+                    shares=8,
+                    duration_seconds=210,
+                    body=(
+                        "为什么制度设计最后总会反噬自己？真正的关键，是执行权和解释权被绑在了一起。"
+                        "先看执行权，再看解释权，最后回到制度为什么会失控。关注我，下一条继续拆。"
+                    ),
+                )
+                for idx in range(1, 9)
+            ]
+
+            result = analyze_phase2_rows(rows)
+
+            self.assertFalse(
+                [
+                    row
+                    for row in result.evidence_records
+                    if row["evidence_kind"] == "cross_author_transfer_pattern"
+                ]
+            )
+
     def test_write_phase2_exports_merges_author_scoped_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)

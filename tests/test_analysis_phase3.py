@@ -295,6 +295,54 @@ class Phase3DistillationTests(unittest.TestCase):
         self.assertNotIn("author_scope", card)
         self.assertIn("Do not apply outside the listed routing scope without fresh evidence.", card["misuse_risks"])
 
+    def test_route_foundation_records_become_route_validated_cards(self) -> None:
+        evidence_records = [
+            {
+                "evidence_id": "ev_route_001",
+                "evidence_kind": "route_foundation_pattern",
+                "evidence_origin": "route",
+                "evidence_polarity": "positive",
+                "transfer_scope": "route_local",
+                "author": "多作者",
+                "scope": "same_content_type",
+                "layer": "general",
+                "content_type": "concept_explainer",
+                "format": "long_explainer",
+                "domain": "cognition",
+                "primary_goal": "follow",
+                "style_family": "question_hook",
+                "author_signature": "",
+                "feature_name": "argument_shape",
+                "feature_value": "stepwise_explainer",
+                "metric_name": "route_prevalence",
+                "metric_value": "0.75",
+                "support_count": "12",
+                "contradiction_count": "4",
+                "support_prevalence": "0.75",
+                "contrast_prevalence": "0.25",
+                "baseline_prevalence": "",
+                "support_sample_size": "16",
+                "contrast_sample_size": "",
+                "baseline_sample_size": "",
+                "route_content_type": "concept_explainer",
+                "route_format": "long_explainer",
+                "route_goal": "follow",
+                "confidence_grade": "E3",
+                "ready_for_distillation": "yes",
+                "source_excerpt": "先看第一层，再看第二层，最后回到结论。",
+                "evidence_refs": "r1|r2|r3",
+                "notes": "route foundation",
+            }
+        ]
+
+        result = distill_phase3_cards(evidence_records)
+
+        self.assertEqual(len(result.skill_cards), 1)
+        card = result.skill_cards[0]
+        self.assertEqual(card["skill_subtype"], "foundational_skill")
+        self.assertEqual(card["promotion_status"], "route_validated")
+        self.assertNotIn("author_scope", card)
+
     def test_write_phase3_exports_merges_author_scoped_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)

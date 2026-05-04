@@ -160,6 +160,10 @@ def _classify_record(record: dict[str, str]) -> tuple[str, str]:
         if not _supports_positive_skill(record):
             return "skip", ""
         return "skill", "foundational_skill"
+    if kind == "route_foundation_pattern":
+        if not _supports_positive_skill(record):
+            return "skip", ""
+        return "skill", "foundational_skill"
     if kind == "differential_gain_pattern":
         if not _supports_positive_skill(record):
             return "skip", ""

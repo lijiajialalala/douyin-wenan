@@ -102,6 +102,9 @@ def write_phase3_exports(
             "title": str(card["title"]),
             "status": str(card["status"]),
             "layer": str(card["layer"]),
+            "transferability_level": str(card.get("transferability_level", "")),
+            "promotion_status": str(card.get("promotion_status", "")),
+            "author_scope": str(card.get("author_scope", "")),
             "source_author": str(card.get("_source_author", "")),
             "evidence_refs": "|".join(str(ref) for ref in card.get("evidence_refs", [])),
         }
@@ -114,6 +117,9 @@ def write_phase3_exports(
             "title": str(card["title"]),
             "status": str(card["status"]),
             "layer": str(card["layer"]),
+            "transferability_level": str(card.get("transferability_level", "")),
+            "promotion_status": str(card.get("promotion_status", "")),
+            "author_scope": str(card.get("author_scope", "")),
             "source_author": str(card.get("_source_author", "")),
             "evidence_refs": "|".join(str(ref) for ref in card.get("evidence_refs", [])),
         }
@@ -209,10 +215,12 @@ def _build_skill_card(record: dict[str, str], *, skill_subtype: str) -> dict[str
     layer = _text(record, "layer") or "general"
     status = _status_from_confidence(_text(record, "confidence_grade"))
     card_type = "signature_pattern" if layer == "author_signature" else "skill"
-    author_scope = _text(record, "author") if card_type == "signature_pattern" else ""
     slots = _slots_for_feature(feature_name)
     title = _skill_title(feature_name, feature_value)
     style_family = _text(record, "style_family")
+    transferability_level = _transferability_level(record, skill_subtype=skill_subtype)
+    promotion_status = _promotion_status(record, transferability_level=transferability_level)
+    author_scope = _author_scope_for_card(record, card_type=card_type, promotion_status=promotion_status)
     card = {
         "card_id": _card_id("skill", evidence_id, feature_name, feature_value),
         "title": title,
@@ -222,6 +230,8 @@ def _build_skill_card(record: dict[str, str], *, skill_subtype: str) -> dict[str
         "layer": layer,
         "priority": _priority_for_record(record),
         "hardness": _hardness_for_feature(feature_name),
+        "transferability_level": transferability_level,
+        "promotion_status": promotion_status,
         "content_types": _list_if_text(_text(record, "content_type")),
         "formats": _list_if_text(_text(record, "format")),
         "domains": _list_if_text(_text(record, "domain")),
@@ -239,6 +249,7 @@ def _build_skill_card(record: dict[str, str], *, skill_subtype: str) -> dict[str
         "output_contract": _skill_output_contract(feature_name, feature_value),
         "evaluation_checks": _skill_evaluation_checks(feature_name, feature_value),
         "production_actionability": _production_actionability(feature_name),
+        "misuse_risks": _misuse_risks(record, transferability_level=transferability_level),
         "positive_examples": _positive_examples(record),
         "counter_examples": _skill_counter_examples(feature_name, feature_value),
         "evidence_refs": [evidence_id],
@@ -256,6 +267,9 @@ def _build_anti_skill_card(record: dict[str, str], *, skill_subtype: str) -> dic
     feature_name = _text(record, "feature_name")
     feature_value = _text(record, "feature_value")
     evidence_id = _text(record, "evidence_id")
+    transferability_level = _transferability_level(record, skill_subtype=skill_subtype)
+    promotion_status = _promotion_status(record, transferability_level=transferability_level)
+    author_scope = _author_scope_for_card(record, card_type="anti_skill", promotion_status=promotion_status)
     card = {
         "card_id": _card_id("anti", evidence_id, feature_name, feature_value),
         "title": _anti_skill_title(feature_name, feature_value),
@@ -264,10 +278,13 @@ def _build_anti_skill_card(record: dict[str, str], *, skill_subtype: str) -> dic
         "layer": _text(record, "layer") or "general",
         "priority": _priority_for_record(record),
         "hardness": _hardness_for_feature(feature_name),
+        "transferability_level": transferability_level,
+        "promotion_status": promotion_status,
         "content_types": _list_if_text(_text(record, "content_type")),
         "formats": _list_if_text(_text(record, "format")),
         "domains": _list_if_text(_text(record, "domain")),
         "goals": _list_if_text(_text(record, "primary_goal")),
+        "author_scope": author_scope,
         "failure_pattern": _anti_failure_pattern(feature_name, feature_value),
         "detection_signals": _anti_detection_signals(feature_name, feature_value, record),
         "likely_causes": _anti_likely_causes(feature_name, feature_value),
@@ -276,6 +293,7 @@ def _build_anti_skill_card(record: dict[str, str], *, skill_subtype: str) -> dic
         "repair_examples": _anti_repair_examples(feature_name, feature_value),
         "evaluation_checks": _anti_evaluation_checks(feature_name, feature_value),
         "production_actionability": "direct",
+        "misuse_risks": _misuse_risks(record, transferability_level=transferability_level),
         "evidence_refs": [evidence_id],
         "notes": _text(record, "notes"),
         "_title_zh": _anti_skill_title_zh(feature_name, feature_value),
@@ -326,6 +344,66 @@ def _hardness_for_feature(feature_name: str) -> str:
     if feature_name in {"style_family", "cta_type", "cta_presence"}:
         return "preferred"
     return "optional"
+
+
+def _transferability_level(record: dict[str, str], *, skill_subtype: str) -> str:
+    layer = _text(record, "layer")
+    evidence_kind = _text(record, "evidence_kind")
+    format_name = _text(record, "format")
+    if layer == "author_signature":
+        return "author_signature_overlay"
+    if evidence_kind == "cross_author_transfer_pattern" or skill_subtype == "transferable_skill":
+        return "cross_domain_rhetorical"
+    if format_name in {"debate_showdown", "list_countdown"}:
+        return "format_specific"
+    if _text(record, "content_type"):
+        return "content_type_specific"
+    if format_name:
+        return "format_specific"
+    if _text(record, "domain"):
+        return "domain_specific"
+    return "general_guardrail"
+
+
+def _promotion_status(record: dict[str, str], *, transferability_level: str) -> str:
+    evidence_kind = _text(record, "evidence_kind")
+    confidence = _text(record, "confidence_grade")
+    if transferability_level == "general_guardrail" and confidence in {"E3", "E4"}:
+        return "global_guardrail"
+    if evidence_kind == "cross_author_transfer_pattern" or confidence == "E4":
+        return "cross_route_validated"
+    if confidence == "E3":
+        return "route_validated"
+    return "author_local"
+
+
+def _author_scope_for_card(record: dict[str, str], *, card_type: str, promotion_status: str) -> str:
+    if card_type == "signature_pattern" or promotion_status == "author_local":
+        return _text(record, "author")
+    return ""
+
+
+def _misuse_risks(record: dict[str, str], *, transferability_level: str) -> list[str]:
+    feature_name = _text(record, "feature_name")
+    feature_value = _text(record, "feature_value")
+    risks = ["Do not apply outside the listed routing scope without fresh evidence."]
+    if transferability_level == "content_type_specific":
+        risks.append("May fail when copied into a different content task even if the wording sounds reusable.")
+    if transferability_level == "format_specific":
+        risks.append("May distort formats with different pacing, slot order, or viewer payoff.")
+    if transferability_level == "domain_specific":
+        risks.append("May overfit to one domain's material logic and evidence style.")
+    if transferability_level == "author_signature_overlay":
+        risks.append("Treat as an author flavor overlay, not as a structural rule.")
+    if feature_name in {"style_family", "hook_type"}:
+        risks.append("Do not force the opening style when the format needs a stronger structural setup.")
+    if feature_name == "cta_presence" or feature_name == "cta_type":
+        risks.append("Do not add a CTA when the target goal does not need an explicit action.")
+    if feature_name == "hook_type" and feature_value == "statement":
+        risks.append("A statement opening is only weak when it lacks viewer tension, not by default.")
+    if _text(record, "domain") == "history":
+        risks.append("May overfit to historical narration and weaken lighter or visual-led formats.")
+    return _unique_strings(risks)
 
 
 def _slots_for_feature(feature_name: str) -> list[str]:
@@ -619,6 +697,18 @@ def _list_if_text(value: str) -> list[str]:
     return [value] if value else []
 
 
+def _unique_strings(values: list[str]) -> list[str]:
+    unique: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        cleaned = value.strip()
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        unique.append(cleaned)
+    return unique
+
+
 def _drop_empty_fields(payload: dict[str, object]) -> dict[str, object]:
     cleaned: dict[str, object] = {}
     for key, value in payload.items():
@@ -684,10 +774,13 @@ def _readable_skill_row(card: dict[str, object]) -> dict[str, str]:
         "作者来源": str(card.get("_source_author", "")),
         "中文标题": str(card.get("_title_zh", "")),
         "适用层级": _layer_zh(str(card.get("layer", ""))),
+        "迁移层级": _transferability_level_zh(str(card.get("transferability_level", ""))),
+        "验证范围": _promotion_status_zh(str(card.get("promotion_status", ""))),
         "适用内容类型": _join_zh(card.get("content_types", [])),
         "适用形式": _join_zh(card.get("formats", [])),
         "适用领域": _join_zh(card.get("domains", [])),
         "适用目标": _join_zh(card.get("goals", [])),
+        "误用风险": "；".join(str(item) for item in card.get("misuse_risks", [])),
         "何时使用": "；".join(_zh_skill_triggers(feature_name, feature_value, card)),
         "如何执行": "；".join(_zh_skill_execution_steps(feature_name, feature_value, card)),
         "输出要求": "；".join(_zh_skill_output_contract(feature_name, feature_value)),
@@ -708,10 +801,13 @@ def _readable_anti_skill_row(card: dict[str, object]) -> dict[str, str]:
         "作者来源": str(card.get("_source_author", "")),
         "中文标题": str(card.get("_title_zh", "")),
         "适用层级": _layer_zh(str(card.get("layer", ""))),
+        "迁移层级": _transferability_level_zh(str(card.get("transferability_level", ""))),
+        "验证范围": _promotion_status_zh(str(card.get("promotion_status", ""))),
         "适用内容类型": _join_zh(card.get("content_types", [])),
         "适用形式": _join_zh(card.get("formats", [])),
         "适用领域": _join_zh(card.get("domains", [])),
         "适用目标": _join_zh(card.get("goals", [])),
+        "误用风险": "；".join(str(item) for item in card.get("misuse_risks", [])),
         "失败表现": _zh_anti_failure_pattern(feature_name, feature_value),
         "识别信号": "；".join(_zh_anti_detection_signals(feature_name, feature_value)),
         "修正动作": "；".join(_zh_anti_prevention_actions(feature_name, feature_value)),
@@ -896,6 +992,28 @@ def _layer_zh(value: str) -> str:
         "style_family": "风格层",
         "author_signature": "作者特征层",
         "cross_layer": "跨层",
+    }
+    return mapping.get(value, value)
+
+
+def _transferability_level_zh(value: str) -> str:
+    mapping = {
+        "general_guardrail": "通用底线",
+        "cross_domain_rhetorical": "跨领域修辞",
+        "format_specific": "形式专属",
+        "content_type_specific": "内容类型专属",
+        "domain_specific": "领域专属",
+        "author_signature_overlay": "作者签名覆盖",
+    }
+    return mapping.get(value, value)
+
+
+def _promotion_status_zh(value: str) -> str:
+    mapping = {
+        "author_local": "作者局部",
+        "route_validated": "同路由验证",
+        "cross_route_validated": "跨路由验证",
+        "global_guardrail": "全局底线",
     }
     return mapping.get(value, value)
 

@@ -39,6 +39,16 @@ fields:
     type: string
     allowed: [required, preferred, optional]
     description: Whether the card is mandatory or discretionary in composition
+  - name: transferability_level
+    required: true
+    type: string
+    allowed: [general_guardrail, cross_domain_rhetorical, format_specific, content_type_specific, domain_specific, author_signature_overlay]
+    description: How far this card can be reused beyond its source evidence
+  - name: promotion_status
+    required: true
+    type: string
+    allowed: [author_local, route_validated, cross_route_validated, global_guardrail]
+    description: Evidence-backed validation scope for production use
   - name: content_types
     required: false
     type: string_list
@@ -112,6 +122,10 @@ fields:
     type: string
     allowed: [direct, needs_translation, diagnostic_only]
     description: Whether the evidence can be turned into a writing move directly
+  - name: misuse_risks
+    required: true
+    type: string_list
+    description: Known risks when applying this card outside its validated scope
   - name: positive_examples
     required: true
     type: string_list
@@ -131,6 +145,7 @@ fields:
 
 row_invariants:
   - rule: card_id must be unique within the card catalog
+  - rule: promotion_status author_local requires non-empty author_scope
   - rule: signature_pattern requires non-empty author_scope
   - rule: composition_template should reference at least one slot and one routing dimension
   - rule: active cards must include at least one evidence_ref and at least one evaluation_check

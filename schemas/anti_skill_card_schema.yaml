@@ -34,6 +34,16 @@ fields:
     type: string
     allowed: [required, preferred, optional]
     description: Whether the prevention rule is mandatory
+  - name: transferability_level
+    required: true
+    type: string
+    allowed: [general_guardrail, cross_domain_rhetorical, format_specific, content_type_specific, domain_specific, author_signature_overlay]
+    description: How far this anti-skill can be reused beyond its source evidence
+  - name: promotion_status
+    required: true
+    type: string
+    allowed: [author_local, route_validated, cross_route_validated, global_guardrail]
+    description: Evidence-backed validation scope for production use
   - name: content_types
     required: false
     type: string_list
@@ -50,6 +60,10 @@ fields:
     required: false
     type: string_list
     description: Relevant goal routing tags
+  - name: author_scope
+    required: false
+    type: string
+    description: Author name when the anti-skill is author-local
   - name: failure_pattern
     required: true
     type: string
@@ -83,6 +97,10 @@ fields:
     type: string
     allowed: [direct, needs_translation, diagnostic_only]
     description: Whether the anti-pattern can be turned into a writing guardrail directly
+  - name: misuse_risks
+    required: true
+    type: string_list
+    description: Known risks when applying this anti-skill outside its validated scope
   - name: evidence_refs
     required: true
     type: string_list
@@ -94,5 +112,6 @@ fields:
 
 row_invariants:
   - rule: card_id must be unique within the anti-skill catalog
+  - rule: promotion_status author_local requires non-empty author_scope
   - rule: active anti-skill cards must include at least one detection signal and one prevention action
   - rule: active anti-skill cards must include at least one evidence_ref

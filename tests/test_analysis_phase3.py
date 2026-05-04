@@ -137,6 +137,10 @@ class Phase3DistillationTests(unittest.TestCase):
         self.assertIn("hook", skill_card["slots"])
         self.assertIn("question_hook", skill_card["style_families"])
         self.assertEqual(skill_card["production_actionability"], "direct")
+        self.assertEqual(skill_card["transferability_level"], "content_type_specific")
+        self.assertEqual(skill_card["promotion_status"], "author_local")
+        self.assertEqual(skill_card["author_scope"], "柏拉图的石头")
+        self.assertTrue(skill_card["misuse_risks"])
         self.assertEqual(skill_card["evidence_refs"], ["ev_pos_001"])
 
         anti_card = result.anti_skill_cards[0]
@@ -144,6 +148,10 @@ class Phase3DistillationTests(unittest.TestCase):
         self.assertEqual(anti_card["skill_subtype"], "negative_pattern")
         self.assertEqual(anti_card["layer"], "general")
         self.assertIn("long_explainer", anti_card["formats"])
+        self.assertEqual(anti_card["transferability_level"], "content_type_specific")
+        self.assertEqual(anti_card["promotion_status"], "author_local")
+        self.assertEqual(anti_card["author_scope"], "柏拉图的石头")
+        self.assertTrue(anti_card["misuse_risks"])
         self.assertEqual(anti_card["evidence_refs"], ["ev_neg_001"])
 
     def test_write_phase3_exports_writes_schema_valid_yaml_cards(self) -> None:
@@ -235,6 +243,57 @@ class Phase3DistillationTests(unittest.TestCase):
             self.assertTrue(paths["readable_zh"]["anti_skills_md"].exists())
             self.assertNotIn("_source_author", skill_card)
             self.assertNotIn("_source_author", anti_card)
+            self.assertEqual(skill_card["author_scope"], "柏拉图的石头")
+            self.assertEqual(anti_card["author_scope"], "柏拉图的石头")
+
+    def test_cross_author_transfer_records_become_cross_route_cards(self) -> None:
+        evidence_records = [
+            {
+                "evidence_id": "ev_cross_001",
+                "evidence_kind": "cross_author_transfer_pattern",
+                "evidence_origin": "foundation",
+                "evidence_polarity": "positive",
+                "transfer_scope": "cross_author",
+                "author": "多作者",
+                "scope": "cross_author",
+                "layer": "content_type",
+                "content_type": "concept_explainer",
+                "format": "long_explainer",
+                "domain": "cognition",
+                "primary_goal": "save",
+                "style_family": "cold_explainer",
+                "author_signature": "",
+                "feature_name": "argument_shape",
+                "feature_value": "stepwise_explainer",
+                "metric_name": "cross_author_support",
+                "metric_value": "0.42",
+                "support_count": "28",
+                "contradiction_count": "4",
+                "support_prevalence": "0.70",
+                "baseline_prevalence": "0.28",
+                "support_sample_size": "40",
+                "baseline_sample_size": "80",
+                "route_content_type": "concept_explainer",
+                "route_format": "long_explainer",
+                "route_goal": "save",
+                "confidence_grade": "E4",
+                "ready_for_distillation": "yes",
+                "source_excerpt": "先说第一个机制，再说第二个机制，最后回到结论。",
+                "evidence_refs": "x1|x2|x3",
+                "notes": "cross author transfer",
+            }
+        ]
+
+        result = distill_phase3_cards(evidence_records)
+
+        self.assertEqual(len(result.skill_cards), 1)
+        card = result.skill_cards[0]
+        self.assertEqual(card["skill_subtype"], "transferable_skill")
+        self.assertEqual(card["status"], "active")
+        self.assertEqual(card["transferability_level"], "cross_domain_rhetorical")
+        self.assertEqual(card["promotion_status"], "cross_route_validated")
+        self.assertNotIn("author_scope", card)
+        self.assertIn("Do not apply outside the listed routing scope without fresh evidence.", card["misuse_risks"])
 
     def test_write_phase3_exports_merges_author_scoped_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -327,6 +386,9 @@ class Phase3DistillationTests(unittest.TestCase):
             self.assertEqual(len(summary_rows), 2)
             self.assertEqual({row["作者来源"] for row in skill_rows}, {"作者A"})
             self.assertEqual({row["作者来源"] for row in anti_rows}, {"作者B"})
+            self.assertEqual({row["迁移层级"] for row in skill_rows}, {"内容类型专属"})
+            self.assertEqual({row["验证范围"] for row in skill_rows}, {"作者局部"})
+            self.assertTrue(all(row["误用风险"] for row in skill_rows + anti_rows))
             self.assertIn("基础能力：先提问题，再亮观点", (tmp / "readable_zh" / "skills_zh.md").read_text(encoding="utf-8"))
             self.assertIn("不要用平铺直叙的弱开头", (tmp / "readable_zh" / "anti_skills_zh.md").read_text(encoding="utf-8"))
             self.assertTrue((tmp / "assets" / "skills").exists())

@@ -865,6 +865,93 @@ class Phase3DistillationTests(unittest.TestCase):
             for card_id in shared_card_ids:
                 self.assertFalse((tmp / "assets" / "skills" / f"{card_id}.yaml").exists())
 
+    def test_write_phase3_exports_full_rerun_clears_stale_shared_outputs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            shared_record = {
+                "evidence_id": "ev_route_full_stale_001",
+                "evidence_kind": "route_foundation_pattern",
+                "evidence_origin": "route",
+                "evidence_polarity": "positive",
+                "transfer_scope": "route_local",
+                "author": "多作者",
+                "scope": "same_content_type",
+                "layer": "general",
+                "content_type": "concept_explainer",
+                "format": "long_explainer",
+                "domain": "cognition",
+                "primary_goal": "follow",
+                "style_family": "cold_explainer",
+                "author_signature": "",
+                "feature_name": "argument_shape",
+                "feature_value": "stepwise_explainer",
+                "metric_name": "route_prevalence",
+                "metric_value": "0.75",
+                "support_count": "12",
+                "contradiction_count": "4",
+                "support_prevalence": "0.75",
+                "contrast_prevalence": "0.25",
+                "baseline_prevalence": "",
+                "support_sample_size": "16",
+                "contrast_sample_size": "",
+                "baseline_sample_size": "",
+                "route_content_type": "concept_explainer",
+                "route_format": "long_explainer",
+                "route_goal": "follow",
+                "confidence_grade": "E3",
+                "ready_for_distillation": "yes",
+                "source_excerpt": "先看第一层，再看第二层，最后回到结论。",
+                "evidence_refs": "r1|r2|r3",
+                "notes": "stale shared route card",
+            }
+            author_record = {
+                "evidence_id": "ev_pos_full_a",
+                "evidence_kind": "author_foundation_pattern",
+                "evidence_origin": "foundation",
+                "evidence_polarity": "positive",
+                "transfer_scope": "author_local",
+                "author": "作者A",
+                "scope": "same_author",
+                "layer": "style_family",
+                "content_type": "concept_explainer",
+                "format": "long_explainer",
+                "domain": "history",
+                "primary_goal": "save",
+                "style_family": "question_hook",
+                "author_signature": "",
+                "feature_name": "style_family",
+                "feature_value": "question_hook",
+                "metric_name": "author_prevalence",
+                "metric_value": "0.70",
+                "support_count": "7",
+                "contradiction_count": "3",
+                "support_prevalence": "0.70",
+                "baseline_prevalence": "0.40",
+                "support_sample_size": "10",
+                "baseline_sample_size": "20",
+                "route_content_type": "concept_explainer",
+                "route_format": "long_explainer",
+                "route_goal": "save",
+                "confidence_grade": "E2",
+                "ready_for_distillation": "yes",
+                "source_excerpt": "为什么会这样？",
+                "evidence_refs": "a1|a2",
+                "notes": "author a",
+            }
+
+            initial = distill_phase3_cards([shared_record, author_record])
+            write_phase3_exports(initial, tmp)
+            shared_card_ids = {card["card_id"] for card in initial.skill_cards if card["_source_author"] == "多作者"}
+
+            write_phase3_exports(distill_phase3_cards([author_record]), tmp)
+
+            summary_rows = read_csv_rows(tmp / "exports" / "phase3_candidates.csv")
+            skill_rows = read_csv_rows(tmp / "readable_zh" / "skills_zh.csv")
+            self.assertEqual({row["source_author"] for row in summary_rows}, {"作者A"})
+            self.assertEqual({row["作者来源"] for row in skill_rows}, {"作者A"})
+            for card_id in shared_card_ids:
+                self.assertFalse((tmp / "assets" / "skills" / f"{card_id}.yaml").exists())
+
     def test_distill_phase3_skips_low_value_positive_descriptor_patterns(self) -> None:
         evidence_records = [
             {

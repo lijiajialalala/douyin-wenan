@@ -33,6 +33,7 @@ FEATURE_FIELDS = (
     "cta_type",
     "argument_shape",
 )
+SHARED_EVIDENCE_KINDS = {"route_foundation_pattern", "cross_author_transfer_pattern"}
 EXAMPLE_MARKERS = ("比如", "例如", "举个例子", "就像", "拿", "一方面", "另一方面")
 QUESTION_STYLE_MARKERS = ("为什么", "凭什么", "怎么", "谁", "哪一个", "难道")
 CONTRARIAN_MARKERS = ("很多人以为", "不要以为", "你以为", "其实", "真相是", "恰恰相反")
@@ -314,7 +315,7 @@ def write_phase2_exports(
         replace_all=replace_all,
         empty_fieldnames=AUTHOR_CONTRAST_FIELDS,
     )
-    _merge_rows(
+    _merge_evidence_rows(
         evidence_path,
         result.evidence_records,
         key_fields=("evidence_id",),
@@ -980,6 +981,39 @@ def _merge_rows(
     fieldnames = _merged_fieldnames(retained_rows, new_rows) or list(empty_fieldnames)
     sorted_rows = sorted(merged_rows, key=lambda row: _row_key(row, ("author", *key_fields)))
     write_csv_rows(path, fieldnames, sorted_rows)
+
+
+def _merge_evidence_rows(
+    path: Path,
+    new_rows: list[dict[str, str]],
+    *,
+    key_fields: tuple[str, ...],
+    target_authors: tuple[str, ...],
+    replace_all: bool,
+    empty_fieldnames: tuple[str, ...],
+) -> None:
+    existing_rows = read_csv_rows(path) if path.exists() else []
+    retained_rows = [] if replace_all else [
+        row
+        for row in existing_rows
+        if not _is_shared_evidence_row(row)
+        and (not target_authors or (row.get("author", "") or "").strip() not in target_authors)
+    ]
+    merged_by_key: dict[tuple[str, ...], dict[str, str]] = {}
+    for row in retained_rows + new_rows:
+        merged_by_key[_row_key(row, key_fields)] = row
+    merged_rows = list(merged_by_key.values())
+    ensure_parent_dir(path)
+    if not merged_rows:
+        write_csv_rows(path, list(empty_fieldnames), [])
+        return
+    fieldnames = _merged_fieldnames(retained_rows, new_rows) or list(empty_fieldnames)
+    sorted_rows = sorted(merged_rows, key=lambda row: _row_key(row, ("author", *key_fields)))
+    write_csv_rows(path, fieldnames, sorted_rows)
+
+
+def _is_shared_evidence_row(row: dict[str, str]) -> bool:
+    return (row.get("evidence_kind", "") or "").strip() in SHARED_EVIDENCE_KINDS
 
 
 def _row_key(row: dict[str, str], key_fields: tuple[str, ...]) -> tuple[str, ...]:

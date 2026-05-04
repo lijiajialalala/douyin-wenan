@@ -372,6 +372,8 @@ def _transferability_level(record: dict[str, str], *, skill_subtype: str) -> str
 def _promotion_status(record: dict[str, str], *, transferability_level: str) -> str:
     evidence_kind = _text(record, "evidence_kind")
     confidence = _text(record, "confidence_grade")
+    if evidence_kind == "route_foundation_pattern":
+        return "route_validated"
     if transferability_level == "general_guardrail" and confidence in {"E3", "E4"}:
         return "global_guardrail"
     if evidence_kind == "cross_author_transfer_pattern" or confidence == "E4":

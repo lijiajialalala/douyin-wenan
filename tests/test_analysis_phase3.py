@@ -343,6 +343,51 @@ class Phase3DistillationTests(unittest.TestCase):
         self.assertEqual(card["promotion_status"], "route_validated")
         self.assertNotIn("author_scope", card)
 
+    def test_e4_route_foundation_records_stay_route_validated(self) -> None:
+        evidence_records = [
+            {
+                "evidence_id": "ev_route_e4_001",
+                "evidence_kind": "route_foundation_pattern",
+                "evidence_origin": "route",
+                "evidence_polarity": "positive",
+                "transfer_scope": "route_local",
+                "author": "多作者",
+                "scope": "same_content_type",
+                "layer": "general",
+                "content_type": "concept_explainer",
+                "format": "long_explainer",
+                "domain": "cognition",
+                "primary_goal": "follow",
+                "style_family": "question_hook",
+                "author_signature": "",
+                "feature_name": "argument_shape",
+                "feature_value": "stepwise_explainer",
+                "metric_name": "route_prevalence",
+                "metric_value": "0.80",
+                "support_count": "16",
+                "contradiction_count": "4",
+                "support_prevalence": "0.80",
+                "contrast_prevalence": "0.20",
+                "baseline_prevalence": "",
+                "support_sample_size": "20",
+                "contrast_sample_size": "",
+                "baseline_sample_size": "",
+                "route_content_type": "concept_explainer",
+                "route_format": "long_explainer",
+                "route_goal": "follow",
+                "confidence_grade": "E4",
+                "ready_for_distillation": "yes",
+                "source_excerpt": "先看第一层，再看第二层，最后回到结论。",
+                "evidence_refs": "r1|r2|r3",
+                "notes": "strong route foundation",
+            }
+        ]
+
+        result = distill_phase3_cards(evidence_records)
+
+        self.assertEqual(len(result.skill_cards), 1)
+        self.assertEqual(result.skill_cards[0]["promotion_status"], "route_validated")
+
     def test_write_phase3_exports_merges_author_scoped_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)

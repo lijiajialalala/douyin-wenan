@@ -597,6 +597,62 @@ class Phase2AnalysisTests(unittest.TestCase):
             self.assertEqual(target_rows[0]["row_count"], "12")
             self.assertEqual(target_rows[0]["support_count"], "10")
 
+    def test_write_phase2_exports_author_rerun_clears_stale_shared_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            analysis_dir = tmp / "analysis"
+            author_a_rows = []
+            author_b_rows = []
+
+            for author, prefix, base_likes in (
+                ("柏拉图的石头", "stale_a", 180),
+                ("第二作者", "stale_b", 150),
+            ):
+                target_rows = author_a_rows if author == "柏拉图的石头" else author_b_rows
+                for idx in range(1, 7):
+                    target_rows.append(
+                        self._make_row(
+                            tmp=tmp,
+                            work_id=f"{prefix}_{idx}",
+                            title=f"制度机制拆解 {prefix} {idx}",
+                            likes=base_likes - idx,
+                            comments=12,
+                            favorites=18,
+                            shares=8,
+                            duration_seconds=210,
+                            body=(
+                                "为什么制度设计最后总会反噬自己？真正的关键，是执行权和解释权被绑在了一起。"
+                                "先看执行权，再看解释权，最后回到制度为什么会失控。关注我，下一条继续拆。"
+                            ),
+                            author=author,
+                            account_link=f"https://example.com/u/{prefix}",
+                        )
+                    )
+
+            full_rows = [*author_a_rows, *author_b_rows]
+            write_phase2_exports(analyze_phase2_rows(full_rows), analysis_dir)
+            initial_evidence_rows = read_csv_rows(analysis_dir / "evidence" / "evidence_records.csv")
+            self.assertTrue(
+                any(row["evidence_kind"] == "route_foundation_pattern" for row in initial_evidence_rows)
+            )
+            self.assertTrue(
+                any(row["evidence_kind"] == "cross_author_transfer_pattern" for row in initial_evidence_rows)
+            )
+
+            write_phase2_exports(
+                analyze_phase2_rows(author_a_rows, route_baseline_rows=author_a_rows),
+                analysis_dir,
+                target_authors=("柏拉图的石头",),
+            )
+
+            evidence_rows = read_csv_rows(analysis_dir / "evidence" / "evidence_records.csv")
+            self.assertFalse(
+                any(
+                    row["evidence_kind"] in {"route_foundation_pattern", "cross_author_transfer_pattern"}
+                    for row in evidence_rows
+                )
+            )
+
     def test_write_phase2_exports_clears_author_scoped_outputs_when_author_now_has_zero_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)

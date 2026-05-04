@@ -17,6 +17,44 @@ class Phase3DistillationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.repo_root = Path(__file__).resolve().parents[1]
 
+    def _phase3_record(self, **overrides: str) -> dict[str, str]:
+        record = {
+            "evidence_id": "ev_default",
+            "evidence_kind": "author_foundation_pattern",
+            "evidence_origin": "foundation",
+            "evidence_polarity": "positive",
+            "transfer_scope": "author_local",
+            "author": "作者A",
+            "scope": "same_author",
+            "layer": "general",
+            "content_type": "concept_explainer",
+            "format": "long_explainer",
+            "domain": "history",
+            "primary_goal": "follow",
+            "style_family": "question_hook",
+            "author_signature": "",
+            "feature_name": "cta_type",
+            "feature_value": "follow",
+            "metric_name": "author_prevalence",
+            "metric_value": "0.70",
+            "support_count": "7",
+            "contradiction_count": "3",
+            "support_prevalence": "0.70",
+            "baseline_prevalence": "0.40",
+            "support_sample_size": "10",
+            "baseline_sample_size": "20",
+            "route_content_type": "concept_explainer",
+            "route_format": "long_explainer",
+            "route_goal": "follow",
+            "confidence_grade": "E2",
+            "ready_for_distillation": "yes",
+            "source_excerpt": "关注我，下期继续讲。",
+            "evidence_refs": "a1|a2",
+            "notes": "default record",
+        }
+        record.update(overrides)
+        return record
+
     def test_distill_phase3_cards_builds_candidate_skill_and_anti_skill(self) -> None:
         evidence_records = [
             {
@@ -1049,6 +1087,81 @@ class Phase3DistillationTests(unittest.TestCase):
         self.assertEqual(result.skill_cards, [])
         self.assertEqual(result.anti_skill_cards, [])
         self.assertEqual(len(result.skipped_records), 1)
+
+    def test_distill_phase3_merges_same_skill_across_content_routes(self) -> None:
+        evidence_records = [
+            self._phase3_record(
+                evidence_id="ev_cta_follow_book",
+                content_type="book_digest",
+                domain="philosophy",
+                route_content_type="book_digest",
+                evidence_refs="book1|book2",
+            ),
+            self._phase3_record(
+                evidence_id="ev_cta_follow_history",
+                content_type="historical_interpretation",
+                domain="history",
+                route_content_type="historical_interpretation",
+                evidence_refs="history1|history2",
+            ),
+        ]
+
+        result = distill_phase3_cards(evidence_records)
+
+        self.assertEqual(len(result.skill_cards), 1)
+        card = result.skill_cards[0]
+        self.assertEqual(card["_source_feature_name"], "cta_type")
+        self.assertEqual(card["_source_feature_value"], "follow")
+        self.assertCountEqual(card["content_types"], ["book_digest", "historical_interpretation"])
+        self.assertCountEqual(card["domains"], ["philosophy", "history"])
+        self.assertEqual(card["evidence_refs"], ["ev_cta_follow_book", "ev_cta_follow_history"])
+
+    def test_distill_phase3_prefers_specific_cta_type_over_generic_cta_presence(self) -> None:
+        evidence_records = [
+            self._phase3_record(
+                evidence_id="ev_cta_generic",
+                feature_name="cta_presence",
+                feature_value="yes",
+            ),
+            self._phase3_record(
+                evidence_id="ev_cta_follow",
+                feature_name="cta_type",
+                feature_value="follow",
+            ),
+        ]
+
+        result = distill_phase3_cards(evidence_records)
+
+        self.assertEqual(len(result.skill_cards), 1)
+        card = result.skill_cards[0]
+        self.assertEqual(card["title"], "Follow-Oriented Close")
+        self.assertEqual(card["_source_feature_name"], "cta_type")
+        self.assertEqual(card["evidence_refs"], ["ev_cta_follow"])
+
+    def test_readable_anti_skill_uses_human_title_for_straight_explainer(self) -> None:
+        evidence_records = [
+            self._phase3_record(
+                evidence_id="ev_neg_straight",
+                evidence_kind="negative_pattern",
+                evidence_origin="differential",
+                evidence_polarity="negative",
+                feature_name="argument_shape",
+                feature_value="straight_explainer",
+                primary_goal="save",
+                route_goal="save",
+                notes="weak flat progression",
+            )
+        ]
+
+        result = distill_phase3_cards(evidence_records)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            write_phase3_exports(result, tmp)
+            anti_rows = read_csv_rows(tmp / "readable_zh" / "anti_skills_zh.csv")
+
+        self.assertEqual(len(anti_rows), 1)
+        self.assertEqual(anti_rows[0]["中文标题"], "不要一路平铺解释到底")
+        self.assertNotIn("argument_shape", anti_rows[0]["中文标题"])
 
     def test_distill_phase3_skips_low_value_negative_descriptor_patterns(self) -> None:
         evidence_records = [

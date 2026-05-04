@@ -11,6 +11,10 @@ from douyin_wenan.common.csv_io import write_csv_rows
 from douyin_wenan.paths import ensure_parent_dir
 
 
+SHARED_EVIDENCE_AUTHOR = "多作者"
+SHARED_EVIDENCE_KINDS = {"route_foundation_pattern", "cross_author_transfer_pattern"}
+
+
 @dataclass(frozen=True)
 class Phase3DistillationResult:
     skill_cards: list[dict[str, object]]
@@ -33,7 +37,7 @@ def distill_phase3_cards(
     skipped: list[dict[str, str]] = []
 
     for record in evidence_records:
-        if target_author and (record.get("author", "") or "").strip() != target_author:
+        if target_author and not _matches_author_scope(record, target_author):
             continue
         decision, skill_subtype = _classify_record(record)
         if decision == "skip":
@@ -56,6 +60,16 @@ def distill_phase3_cards(
         anti_skill_cards=anti_skill_cards,
         skipped_records=skipped,
     )
+
+
+def _matches_author_scope(record: dict[str, str], target_author: str) -> bool:
+    author = (record.get("author", "") or "").strip()
+    return author == target_author or _is_shared_evidence_record(record)
+
+
+def _is_shared_evidence_record(record: dict[str, str]) -> bool:
+    return (record.get("evidence_kind", "") or "").strip() in SHARED_EVIDENCE_KINDS
+
 
 def write_phase3_exports(
     result: Phase3DistillationResult,
@@ -1137,8 +1151,10 @@ def _resolve_target_authors(
     inferred_target_authors: tuple[str, ...],
 ) -> tuple[tuple[str, ...], bool]:
     if explicit_target_authors is not None:
-        cleaned = tuple(sorted({author.strip() for author in explicit_target_authors if author.strip()}))
-        return cleaned, False
+        cleaned = {author.strip() for author in explicit_target_authors if author.strip()}
+        if cleaned:
+            cleaned.add(SHARED_EVIDENCE_AUTHOR)
+        return tuple(sorted(cleaned)), False
     if inferred_target_authors:
         return inferred_target_authors, False
     return (), True

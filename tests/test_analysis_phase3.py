@@ -343,6 +343,118 @@ class Phase3DistillationTests(unittest.TestCase):
         self.assertEqual(card["promotion_status"], "route_validated")
         self.assertNotIn("author_scope", card)
 
+    def test_author_scoped_distillation_includes_current_shared_records(self) -> None:
+        evidence_records = [
+            {
+                "evidence_id": "ev_author_a_001",
+                "evidence_kind": "author_foundation_pattern",
+                "evidence_origin": "foundation",
+                "evidence_polarity": "positive",
+                "transfer_scope": "author_local",
+                "author": "作者A",
+                "scope": "same_author",
+                "layer": "style_family",
+                "content_type": "concept_explainer",
+                "format": "long_explainer",
+                "domain": "history",
+                "primary_goal": "save",
+                "style_family": "question_hook",
+                "author_signature": "",
+                "feature_name": "style_family",
+                "feature_value": "question_hook",
+                "metric_name": "author_prevalence",
+                "metric_value": "0.70",
+                "support_count": "7",
+                "contradiction_count": "3",
+                "support_prevalence": "0.70",
+                "baseline_prevalence": "0.40",
+                "support_sample_size": "10",
+                "baseline_sample_size": "20",
+                "route_content_type": "concept_explainer",
+                "route_format": "long_explainer",
+                "route_goal": "save",
+                "confidence_grade": "E2",
+                "ready_for_distillation": "yes",
+                "source_excerpt": "为什么会这样？",
+                "evidence_refs": "a1|a2",
+                "notes": "author-local foundation",
+            },
+            {
+                "evidence_id": "ev_route_shared_001",
+                "evidence_kind": "route_foundation_pattern",
+                "evidence_origin": "route",
+                "evidence_polarity": "positive",
+                "transfer_scope": "route_local",
+                "author": "多作者",
+                "scope": "same_content_type",
+                "layer": "general",
+                "content_type": "concept_explainer",
+                "format": "long_explainer",
+                "domain": "cognition",
+                "primary_goal": "save",
+                "style_family": "cold_explainer",
+                "author_signature": "",
+                "feature_name": "argument_shape",
+                "feature_value": "stepwise_explainer",
+                "metric_name": "route_prevalence",
+                "metric_value": "0.75",
+                "support_count": "12",
+                "contradiction_count": "4",
+                "support_prevalence": "0.75",
+                "contrast_prevalence": "0.25",
+                "baseline_prevalence": "",
+                "support_sample_size": "16",
+                "contrast_sample_size": "",
+                "baseline_sample_size": "",
+                "route_content_type": "concept_explainer",
+                "route_format": "long_explainer",
+                "route_goal": "save",
+                "confidence_grade": "E3",
+                "ready_for_distillation": "yes",
+                "source_excerpt": "先看第一层，再看第二层，最后回到结论。",
+                "evidence_refs": "r1|r2|r3",
+                "notes": "route foundation",
+            },
+            {
+                "evidence_id": "ev_author_b_001",
+                "evidence_kind": "author_foundation_pattern",
+                "evidence_origin": "foundation",
+                "evidence_polarity": "positive",
+                "transfer_scope": "author_local",
+                "author": "作者B",
+                "scope": "same_author",
+                "layer": "style_family",
+                "content_type": "concept_explainer",
+                "format": "long_explainer",
+                "domain": "history",
+                "primary_goal": "save",
+                "style_family": "question_hook",
+                "author_signature": "",
+                "feature_name": "style_family",
+                "feature_value": "question_hook",
+                "metric_name": "author_prevalence",
+                "metric_value": "0.70",
+                "support_count": "7",
+                "contradiction_count": "3",
+                "support_prevalence": "0.70",
+                "baseline_prevalence": "0.40",
+                "support_sample_size": "10",
+                "baseline_sample_size": "20",
+                "route_content_type": "concept_explainer",
+                "route_format": "long_explainer",
+                "route_goal": "save",
+                "confidence_grade": "E2",
+                "ready_for_distillation": "yes",
+                "source_excerpt": "为什么会这样？",
+                "evidence_refs": "b1|b2",
+                "notes": "other author",
+            },
+        ]
+
+        result = distill_phase3_cards(evidence_records, author="作者A")
+
+        self.assertEqual({card["_source_author"] for card in result.skill_cards}, {"作者A", "多作者"})
+
     def test_e4_route_foundation_records_stay_route_validated(self) -> None:
         evidence_records = [
             {
@@ -652,6 +764,106 @@ class Phase3DistillationTests(unittest.TestCase):
                     for card_id in author_b_card_ids
                 )
             )
+
+    def test_write_phase3_exports_author_rerun_clears_stale_shared_outputs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            shared = distill_phase3_cards(
+                [
+                    {
+                        "evidence_id": "ev_route_stale_001",
+                        "evidence_kind": "route_foundation_pattern",
+                        "evidence_origin": "route",
+                        "evidence_polarity": "positive",
+                        "transfer_scope": "route_local",
+                        "author": "多作者",
+                        "scope": "same_content_type",
+                        "layer": "general",
+                        "content_type": "concept_explainer",
+                        "format": "long_explainer",
+                        "domain": "cognition",
+                        "primary_goal": "follow",
+                        "style_family": "cold_explainer",
+                        "author_signature": "",
+                        "feature_name": "argument_shape",
+                        "feature_value": "stepwise_explainer",
+                        "metric_name": "route_prevalence",
+                        "metric_value": "0.75",
+                        "support_count": "12",
+                        "contradiction_count": "4",
+                        "support_prevalence": "0.75",
+                        "contrast_prevalence": "0.25",
+                        "baseline_prevalence": "",
+                        "support_sample_size": "16",
+                        "contrast_sample_size": "",
+                        "baseline_sample_size": "",
+                        "route_content_type": "concept_explainer",
+                        "route_format": "long_explainer",
+                        "route_goal": "follow",
+                        "confidence_grade": "E3",
+                        "ready_for_distillation": "yes",
+                        "source_excerpt": "先看第一层，再看第二层，最后回到结论。",
+                        "evidence_refs": "r1|r2|r3",
+                        "notes": "stale shared route card",
+                    }
+                ]
+            )
+            author_b = distill_phase3_cards(
+                [
+                    {
+                        "evidence_id": "ev_neg_b",
+                        "evidence_kind": "negative_pattern",
+                        "evidence_origin": "differential",
+                        "evidence_polarity": "negative",
+                        "transfer_scope": "author_local",
+                        "author": "作者B",
+                        "scope": "same_author",
+                        "layer": "general",
+                        "content_type": "concept_explainer",
+                        "format": "long_explainer",
+                        "domain": "ai",
+                        "primary_goal": "completion",
+                        "style_family": "cold_explainer",
+                        "author_signature": "",
+                        "feature_name": "hook_type",
+                        "feature_value": "statement",
+                        "metric_name": "high_low_rate_gap",
+                        "metric_value": "-0.25",
+                        "support_count": "7",
+                        "contradiction_count": "1",
+                        "support_prevalence": "0.65",
+                        "contrast_prevalence": "0.32",
+                        "support_sample_size": "11",
+                        "contrast_sample_size": "11",
+                        "route_content_type": "concept_explainer",
+                        "route_format": "long_explainer",
+                        "route_goal": "completion",
+                        "confidence_grade": "E2",
+                        "ready_for_distillation": "yes",
+                        "source_excerpt": "今天聊聊一个背景。",
+                        "evidence_refs": "b1|b2",
+                        "notes": "author b",
+                    }
+                ]
+            )
+
+            write_phase3_exports(shared, tmp)
+            write_phase3_exports(author_b, tmp)
+            shared_card_ids = {card["card_id"] for card in shared.skill_cards}
+            write_phase3_exports(
+                distill_phase3_cards([], author="作者A"),
+                tmp,
+                target_authors=("作者A",),
+            )
+
+            summary_rows = read_csv_rows(tmp / "exports" / "phase3_candidates.csv")
+            skill_rows = read_csv_rows(tmp / "readable_zh" / "skills_zh.csv")
+            anti_rows = read_csv_rows(tmp / "readable_zh" / "anti_skills_zh.csv")
+            self.assertEqual({row["source_author"] for row in summary_rows}, {"作者B"})
+            self.assertEqual(skill_rows, [])
+            self.assertEqual({row["作者来源"] for row in anti_rows}, {"作者B"})
+            for card_id in shared_card_ids:
+                self.assertFalse((tmp / "assets" / "skills" / f"{card_id}.yaml").exists())
 
     def test_distill_phase3_skips_low_value_positive_descriptor_patterns(self) -> None:
         evidence_records = [

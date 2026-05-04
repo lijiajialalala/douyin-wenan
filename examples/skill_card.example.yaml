@@ -6,6 +6,8 @@ status: active
 layer: content_type
 priority: 80
 hardness: required
+transferability_level: format_specific
+promotion_status: cross_route_validated
 content_types:
   - comparison_review
 formats:
@@ -39,6 +41,9 @@ evaluation_checks:
   - Conflict is visible in the hook slot.
   - The opening does not exceed the allowed setup length for this format.
 production_actionability: direct
+misuse_risks:
+  - Do not apply outside the listed routing scope without fresh evidence.
+  - May distort formats with different pacing, slot order, or viewer payoff.
 positive_examples:
   - Which AI actually wins when speed matters more than polish?
 counter_examples:

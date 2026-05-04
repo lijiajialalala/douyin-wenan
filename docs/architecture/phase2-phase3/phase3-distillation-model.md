@@ -185,6 +185,38 @@ Suggested statuses:
 Status is part of the asset definition.
 It is not freeform note text.
 
+## Transfer Boundary
+
+Every card must state how far it can travel.
+
+Phase 3 must not assume that a useful pattern is globally reusable. A card can
+only be promoted as far as its evidence supports.
+
+Required boundary fields:
+
+- `transferability_level`: what kind of reuse the card supports
+- `promotion_status`: how far the evidence has validated it
+- `misuse_risks`: what can go wrong if the card is copied into the wrong route
+
+Current transferability levels:
+
+- `general_guardrail`: broad viewing or writing constraint
+- `cross_domain_rhetorical`: rhetorical move that has cross-route support
+- `format_specific`: tied primarily to format structure
+- `content_type_specific`: tied primarily to content task
+- `domain_specific`: tied primarily to domain material
+- `author_signature_overlay`: author flavor, not a structure rule
+
+Current promotion statuses:
+
+- `author_local`: only supported inside the source author or source sample
+- `route_validated`: supported inside a comparable route
+- `cross_route_validated`: supported across multiple routes or authors
+- `global_guardrail`: broad guardrail with strong evidence
+
+This keeps Phase 3 from turning a historical narration habit, an AI showdown
+move, or a creator signature into a fake universal writing rule.
+
 ## Layering Rule
 
 Layers are containers for many assets.
@@ -213,6 +245,9 @@ At minimum, every reusable asset needs:
 - card kind
 - layer
 - routing tags
+- transferability level
+- promotion status
+- misuse risks
 - priority
 - hardness
 - trigger conditions

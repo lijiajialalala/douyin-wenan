@@ -99,8 +99,9 @@ class ManifestSchema:
             issues.append(ValidationIssue(level, "asr_status", "asr ok requires download ok"))
         if row.get("download_status") == "ok" and not (row.get("raw_video_path") or "").strip():
             issues.append(ValidationIssue(level, "raw_video_path", "download ok should set raw_video_path"))
-        if row.get("txt_sync_status") == "ok" and row.get("asr_status") != "ok":
-            issues.append(ValidationIssue(level, "txt_sync_status", "txt sync ok requires asr ok"))
+        has_legacy_txt = bool((row.get("legacy_txt_path") or "").strip())
+        if row.get("txt_sync_status") == "ok" and row.get("asr_status") != "ok" and not has_legacy_txt:
+            issues.append(ValidationIssue(level, "txt_sync_status", "txt sync ok requires asr ok or legacy txt"))
         if row.get("dedup_status") not in {"", "unknown"} and row.get("txt_sync_status") != "ok":
             issues.append(ValidationIssue(level, "dedup_status", "dedup classification requires txt sync ok"))
         if row.get("asr_quality_grade") and row.get("asr_status") != "ok":

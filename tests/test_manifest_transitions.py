@@ -12,6 +12,7 @@ from douyin_wenan.manifest.transitions import (
     mark_asr_succeeded,
     mark_download_failed,
     mark_download_succeeded,
+    mark_txt_sync_succeeded,
     reset_download,
     transition_asr,
 )
@@ -167,6 +168,27 @@ class ManifestTransitionTests(unittest.TestCase):
         self.assertEqual(row["txt_path"], "")
         self.assertEqual(row["dedup_status"], "unknown")
         self.assertEqual(row["dedup_group_id"], "")
+
+    def test_mark_txt_sync_succeeded_allows_legacy_txt_without_asr_ok(self) -> None:
+        row = {
+            "download_status": "pending",
+            "asr_status": "pending",
+            "legacy_txt_path": "D:/legacy/无名书生/整理版/01_作品.txt",
+            "txt_sync_status": "pending",
+            "txt_path": "",
+            "dedup_status": "unknown",
+            "dedup_group_id": "",
+            "notes": "",
+        }
+
+        mark_txt_sync_succeeded(
+            row,
+            txt_path="D:/runtime/corpus/无名书生/transcripts/123_标题A.txt",
+            note="txt imported from legacy_txt_path",
+        )
+        self.assertEqual(row["txt_sync_status"], "ok")
+        self.assertEqual(row["txt_path"], "D:/runtime/corpus/无名书生/transcripts/123_标题A.txt")
+        self.assertIn("txt imported from legacy_txt_path", row["notes"])
 
 
 if __name__ == "__main__":

@@ -190,7 +190,7 @@ columns:
 row_invariants:
   - rule: work_id must be unique
   - rule: asr_status ok requires download_status ok
-  - rule: txt_sync_status ok requires asr_status ok
+  - rule: txt_sync_status ok requires asr_status ok or legacy_txt_path
   - rule: dedup_status other than unknown requires txt_sync_status ok
   - rule: asr_quality_grade may only be set when asr_status is ok
   - rule: txt_path must be non-empty when txt_sync_status is ok

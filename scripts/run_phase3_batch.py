@@ -54,6 +54,8 @@ def main() -> int:
         f"anti_skill_dir={paths['anti_skills'][0].parent if paths['anti_skills'] else config.analysis_dir / 'assets' / 'anti_skills'}"
     )
     print(f"summary={paths['summary']}")
+    print(f"readable_zh_skills={paths['readable_zh']['skills_csv']}")
+    print(f"readable_zh_anti_skills={paths['readable_zh']['anti_skills_csv']}")
     return 0
 
 

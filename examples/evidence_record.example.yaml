@@ -1,5 +1,8 @@
 evidence_id: ev_001
-evidence_kind: corroborated_pattern
+evidence_kind: author_foundation_pattern
+evidence_origin: foundation
+evidence_polarity: positive
+transfer_scope: author_local
 scope: same_author
 layer: style_family
 author: 柏拉图的石头
@@ -10,10 +13,17 @@ primary_goal: save
 style_family: question_hook
 feature_name: opening_question_before_thesis
 feature_value: "yes"
-metric_name: author_relative_percentile
-metric_value: 0.91
+metric_name: author_route_prevalence_gap
+metric_value: 0.26
 support_count: 7
 contradiction_count: 2
+support_prevalence: 0.78
+baseline_prevalence: 0.52
+support_sample_size: 9
+baseline_sample_size: 18
+route_content_type: concept_explainer
+route_format: long_explainer
+route_goal: save
 confidence_grade: E3
 ready_for_distillation: "yes"
 source_excerpt: Opening directly raises a concrete audience doubt before thesis reveal.

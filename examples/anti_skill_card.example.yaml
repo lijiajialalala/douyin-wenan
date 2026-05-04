@@ -1,5 +1,6 @@
 card_id: anti_001
 title: Slow Warmup Before Conflict
+skill_subtype: negative_pattern
 status: active
 layer: general
 priority: 90
@@ -27,6 +28,7 @@ repair_examples:
 evaluation_checks:
   - A viewer can identify the core problem quickly.
   - The opening contains a concrete stake instead of generic framing.
+production_actionability: direct
 evidence_refs:
   - ev_001
 notes: Anti-skill cards are mandatory negative outputs from distillation.

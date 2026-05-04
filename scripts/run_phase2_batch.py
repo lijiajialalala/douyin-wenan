@@ -27,12 +27,13 @@ def main() -> int:
     repo.migrate_to_schema()
     rows = repo.load_rows()
     selected = select_phase2_ready(rows, author=args.author, limit=args.limit)
+    route_baseline_rows = select_phase2_ready(rows) if args.author.strip() else None
 
     if args.dry_run:
         print_batch_preview(stage="phase2", manifest_path=manifest_path, rows=selected, reference_field="txt_path")
         return 0
 
-    result = analyze_phase2_rows(selected)
+    result = analyze_phase2_rows(selected, route_baseline_rows=route_baseline_rows)
     target_authors = (args.author.strip(),) if args.author.strip() else None
     paths = write_phase2_exports(result, config.analysis_dir, target_authors=target_authors)
 
@@ -40,10 +41,14 @@ def main() -> int:
     print(f"selected={len(selected)}")
     print(f"labels={paths['labels']}")
     print(f"baselines={paths['baselines']}")
+    print(f"author_foundations={paths['author_foundations']}")
+    print(f"route_foundations={paths['route_foundations']}")
     print(f"contrasts={paths['contrasts']}")
     print(f"evidence={paths['evidence']}")
     print(f"labeled_rows={len(result.labeled_rows)}")
     print(f"author_baselines={len(result.author_baselines)}")
+    print(f"author_foundation_patterns={len(result.author_foundation_patterns)}")
+    print(f"route_foundation_patterns={len(result.route_foundation_patterns)}")
     print(f"author_high_low={len(result.author_high_low)}")
     print(f"evidence_records={len(result.evidence_records)}")
     return 0

@@ -14,6 +14,7 @@ from douyin_wenan.analysis.phase2 import (
     _infer_format,
     analyze_phase2_rows,
     parse_standard_transcript,
+    select_phase2_ready,
     write_phase2_exports,
 )
 from douyin_wenan.common.csv_io import read_csv_rows
@@ -157,6 +158,7 @@ class Phase2AnalysisTests(unittest.TestCase):
             result = analyze_phase2_rows(rows)
             self.assertEqual(len(result.labeled_rows), 6)
             self.assertEqual(len(result.author_baselines), 1)
+            self.assertTrue(result.route_foundation_patterns)
             self.assertTrue(result.author_high_low)
             self.assertTrue(result.evidence_records)
 
@@ -171,15 +173,188 @@ class Phase2AnalysisTests(unittest.TestCase):
             self.assertEqual(baseline["author"], "柏拉图的石头")
             self.assertEqual(baseline["row_count"], "6")
 
-            question_hook_evidence = [
+            gain_evidence = [
                 record
                 for record in result.evidence_records
-                if record["feature_name"] == "style_family" and record["feature_value"] == "question_hook"
+                if record["evidence_kind"] == "differential_gain_pattern"
             ]
-            self.assertTrue(question_hook_evidence)
-            self.assertEqual(question_hook_evidence[0]["scope"], "same_author")
-            self.assertEqual(question_hook_evidence[0]["confidence_grade"], "E2")
-            self.assertEqual(question_hook_evidence[0]["ready_for_distillation"], "yes")
+            self.assertTrue(gain_evidence)
+
+    def test_analyze_phase2_rows_keeps_foundation_for_multi_route_author(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            rows = []
+
+            for idx in range(1, 7):
+                question_opening = idx <= 4
+                body = (
+                    "为什么制度总会反噬制定制度的人？真正的关键，是执行权和解释权落在了一起。"
+                    "今天先把这个机制讲清楚，关注我，下一条继续拆。"
+                    if question_opening
+                    else "今天聊聊制度反噬人的底层机制。关键在于执行权和解释权落在了一起。关注我，下一条继续拆。"
+                )
+                rows.append(
+                    self._make_row(
+                        tmp=tmp,
+                        work_id=f"mr_a_{idx}",
+                        title=f"制度为什么会反噬人 {idx}",
+                        likes=200 - idx,
+                        comments=20,
+                        favorites=30,
+                        shares=12,
+                        duration_seconds=210,
+                        body=body,
+                    )
+                )
+
+            for idx in range(1, 7):
+                rows.append(
+                    self._make_row(
+                        tmp=tmp,
+                        work_id=f"mr_b_{idx}",
+                        title=f"制度如何慢慢失衡 {idx}",
+                        likes=60 - idx,
+                        comments=4,
+                        favorites=6,
+                        shares=2,
+                        duration_seconds=190,
+                        body="今天聊聊制度如何慢慢失衡。核心在于执行权和解释权没有被拆开。",
+                    )
+                )
+
+            for idx in range(1, 7):
+                rows.append(
+                    self._make_row(
+                        tmp=tmp,
+                        work_id=f"mr_c_{idx}",
+                        title=f"另一组制度解释样本 {idx}",
+                        likes=150 - idx,
+                        comments=12,
+                        favorites=18,
+                        shares=8,
+                        duration_seconds=205,
+                        body="今天聊聊制度反噬人的底层机制。关键在于执行权和解释权落在了一起。关注我，下一条继续拆。",
+                        author="第二作者",
+                        account_link="https://example.com/u/2",
+                    )
+                )
+
+            result = analyze_phase2_rows(rows)
+            target_rows = [
+                row
+                for row in result.author_foundation_patterns
+                if row["author"] == "柏拉图的石头"
+                and row["route_content_type"] == "concept_explainer"
+                and row["route_format"] == "long_explainer"
+                and row["route_goal"] == "follow"
+                and row["feature_name"] == "hook_type"
+                and row["feature_value"] == "question"
+            ]
+
+            self.assertTrue(target_rows)
+            self.assertEqual(target_rows[0]["support_rate"], "0.6667")
+            self.assertEqual(target_rows[0]["route_row_count"], "6")
+            self.assertEqual(target_rows[0]["confidence_grade"], "E2")
+
+            evidence_rows = [
+                row
+                for row in result.evidence_records
+                if row["author"] == "柏拉图的石头"
+                and row["evidence_kind"] == "author_foundation_pattern"
+                and row["feature_name"] == "hook_type"
+                and row["feature_value"] == "question"
+                and row["route_goal"] == "follow"
+            ]
+            self.assertTrue(evidence_rows)
+            self.assertEqual(evidence_rows[0]["baseline_sample_size"], "6")
+
+    def test_analyze_phase2_rows_author_scoped_uses_external_route_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            author_a_rows = []
+            author_b_rows = []
+
+            for idx in range(1, 7):
+                author_a_rows.append(
+                    self._make_row(
+                        tmp=tmp,
+                        work_id=f"ab_a_{idx}",
+                        title=f"制度机制拆解 A{idx}",
+                        likes=180 - idx,
+                        comments=16,
+                        favorites=24,
+                        shares=10,
+                        duration_seconds=210,
+                        body=(
+                            "为什么制度设计最后总会反噬自己？真正的关键，是执行权和解释权被绑在了一起。"
+                            "关注我，下一条继续拆。"
+                            if idx <= 4
+                            else "制度设计最后会反噬自己，关键在于执行权和解释权被绑在了一起。"
+                            "关注我，下一条继续拆。"
+                        ),
+                    )
+                )
+
+            for idx in range(1, 7):
+                author_b_rows.append(
+                    self._make_row(
+                        tmp=tmp,
+                        work_id=f"ab_b_{idx}",
+                        title=f"制度机制拆解 B{idx}",
+                        likes=140 - idx,
+                        comments=12,
+                        favorites=18,
+                        shares=8,
+                        duration_seconds=210,
+                        body=(
+                            "为什么制度设计最后总会反噬自己？真正的关键，是执行权和解释权被绑在了一起。"
+                            "关注我，下一条继续拆。"
+                        ),
+                        author="第二作者",
+                        account_link="https://example.com/u/2",
+                    )
+                )
+
+            result = analyze_phase2_rows(
+                author_a_rows,
+                route_baseline_rows=[*author_a_rows, *author_b_rows],
+            )
+
+            route_rows = [
+                row
+                for row in result.route_foundation_patterns
+                if row["route_content_type"] == "concept_explainer"
+                and row["route_format"] == "long_explainer"
+                and row["route_goal"] == "follow"
+                and row["feature_name"] == "opening_problem_presence"
+                and row["feature_value"] == "yes"
+            ]
+            self.assertEqual(len(route_rows), 1)
+            self.assertEqual(route_rows[0]["row_count"], "12")
+            self.assertEqual(route_rows[0]["support_count"], "10")
+
+            foundation_rows = [
+                row
+                for row in result.author_foundation_patterns
+                if row["author"] == "柏拉图的石头"
+                and row["route_content_type"] == "concept_explainer"
+                and row["route_format"] == "long_explainer"
+                and row["route_goal"] == "follow"
+                and row["feature_name"] == "opening_problem_presence"
+                and row["feature_value"] == "yes"
+            ]
+            self.assertFalse(foundation_rows)
+
+            evidence_rows = [
+                row
+                for row in result.evidence_records
+                if row["author"] == "柏拉图的石头"
+                and row["evidence_kind"] == "author_foundation_pattern"
+                and row["feature_name"] == "opening_problem_presence"
+                and row["feature_value"] == "yes"
+                and row["route_goal"] == "follow"
+            ]
+            self.assertFalse(evidence_rows)
 
     def test_write_phase2_exports_merges_author_scoped_outputs(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -244,12 +419,86 @@ class Phase2AnalysisTests(unittest.TestCase):
 
             label_rows = read_csv_rows(analysis_dir / "labels" / "row_labels.csv")
             baseline_rows = read_csv_rows(analysis_dir / "baselines" / "author_baselines.csv")
+            foundation_rows = read_csv_rows(analysis_dir / "baselines" / "author_foundation_patterns.csv")
+            route_rows = read_csv_rows(analysis_dir / "baselines" / "route_foundation_patterns.csv")
             evidence_rows = read_csv_rows(analysis_dir / "evidence" / "evidence_records.csv")
 
             self.assertEqual({row["author"] for row in label_rows}, {"柏拉图的石头", "第二作者"})
             self.assertEqual({row["author"] for row in baseline_rows}, {"柏拉图的石头", "第二作者"})
+            self.assertTrue(isinstance(foundation_rows, list))
+            self.assertTrue(route_rows)
             self.assertTrue(any(row["author"] == "柏拉图的石头" for row in evidence_rows))
             self.assertTrue(any(row["author"] == "第二作者" for row in evidence_rows))
+
+    def test_write_phase2_exports_author_rerun_keeps_full_route_foundations(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            analysis_dir = tmp / "analysis"
+            author_a_rows = []
+            author_b_rows = []
+
+            for idx in range(1, 7):
+                author_a_rows.append(
+                    self._make_row(
+                        tmp=tmp,
+                        work_id=f"route_a_{idx}",
+                        title=f"制度机制拆解 A{idx}",
+                        likes=180 - idx,
+                        comments=16,
+                        favorites=24,
+                        shares=10,
+                        duration_seconds=210,
+                        body=(
+                            "为什么制度设计最后总会反噬自己？真正的关键，是执行权和解释权被绑在了一起。"
+                            "关注我，下一条继续拆。"
+                            if idx <= 4
+                            else "制度设计最后会反噬自己，关键在于执行权和解释权被绑在了一起。"
+                            "关注我，下一条继续拆。"
+                        ),
+                    )
+                )
+
+            for idx in range(1, 7):
+                author_b_rows.append(
+                    self._make_row(
+                        tmp=tmp,
+                        work_id=f"route_b_{idx}",
+                        title=f"制度机制拆解 B{idx}",
+                        likes=140 - idx,
+                        comments=12,
+                        favorites=18,
+                        shares=8,
+                        duration_seconds=210,
+                        body=(
+                            "为什么制度设计最后总会反噬自己？真正的关键，是执行权和解释权被绑在了一起。"
+                            "关注我，下一条继续拆。"
+                        ),
+                        author="第二作者",
+                        account_link="https://example.com/u/2",
+                    )
+                )
+
+            full_rows = [*author_a_rows, *author_b_rows]
+            write_phase2_exports(analyze_phase2_rows(full_rows), analysis_dir)
+            write_phase2_exports(
+                analyze_phase2_rows(author_a_rows, route_baseline_rows=full_rows),
+                analysis_dir,
+                target_authors=("柏拉图的石头",),
+            )
+
+            route_rows = read_csv_rows(analysis_dir / "baselines" / "route_foundation_patterns.csv")
+            target_rows = [
+                row
+                for row in route_rows
+                if row["route_content_type"] == "concept_explainer"
+                and row["route_format"] == "long_explainer"
+                and row["route_goal"] == "follow"
+                and row["feature_name"] == "opening_problem_presence"
+                and row["feature_value"] == "yes"
+            ]
+            self.assertEqual(len(target_rows), 1)
+            self.assertEqual(target_rows[0]["row_count"], "12")
+            self.assertEqual(target_rows[0]["support_count"], "10")
 
     def test_write_phase2_exports_clears_author_scoped_outputs_when_author_now_has_zero_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -312,20 +561,48 @@ class Phase2AnalysisTests(unittest.TestCase):
             write_phase2_exports(analyze_phase2_rows(author_a_rows), analysis_dir)
             write_phase2_exports(analyze_phase2_rows(author_b_rows), analysis_dir)
             write_phase2_exports(
-                Phase2AnalysisResult([], [], [], []),
+                Phase2AnalysisResult([], [], [], [], [], []),
                 analysis_dir,
                 target_authors=("柏拉图的石头",),
             )
 
             label_rows = read_csv_rows(analysis_dir / "labels" / "row_labels.csv")
             baseline_rows = read_csv_rows(analysis_dir / "baselines" / "author_baselines.csv")
+            foundation_rows = read_csv_rows(analysis_dir / "baselines" / "author_foundation_patterns.csv")
             contrast_rows = read_csv_rows(analysis_dir / "contrasts" / "author_high_low.csv")
             evidence_rows = read_csv_rows(analysis_dir / "evidence" / "evidence_records.csv")
 
             self.assertEqual({row["author"] for row in label_rows}, {"第二作者"})
             self.assertEqual({row["author"] for row in baseline_rows}, {"第二作者"})
+            self.assertTrue(isinstance(foundation_rows, list))
             self.assertEqual({row["author"] for row in contrast_rows}, {"第二作者"})
             self.assertEqual({row["author"] for row in evidence_rows}, {"第二作者"})
+
+    def test_select_phase2_ready_uses_txt_and_dedup_not_download_or_asr(self) -> None:
+        rows = [
+            {
+                "work_id": "7001",
+                "author": "柏拉图的石头",
+                "download_status": "pending",
+                "asr_status": "pending",
+                "txt_sync_status": "ok",
+                "dedup_status": "unique",
+                "txt_path": "D:/runtime/corpus/柏拉图的石头/transcripts/7001.txt",
+                "legacy_txt_path": "D:/legacy/柏拉图的石头/整理版/01.txt",
+            },
+            {
+                "work_id": "7002",
+                "author": "柏拉图的石头",
+                "download_status": "ok",
+                "asr_status": "ok",
+                "txt_sync_status": "pending",
+                "dedup_status": "unknown",
+                "txt_path": "D:/runtime/corpus/柏拉图的石头/transcripts/7002.txt",
+                "legacy_txt_path": "",
+            },
+        ]
+        selected = select_phase2_ready(rows)
+        self.assertEqual([row["work_id"] for row in selected], ["7001"])
 
     def _make_row(
         self,

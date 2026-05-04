@@ -35,7 +35,7 @@ def distill_phase3_cards(
     for record in evidence_records:
         if target_author and (record.get("author", "") or "").strip() != target_author:
             continue
-        decision = _classify_record(record)
+        decision, skill_subtype = _classify_record(record)
         if decision == "skip":
             skipped.append(
                 {
@@ -45,10 +45,10 @@ def distill_phase3_cards(
             )
             continue
         if decision == "skill":
-            skill_cards.append(_build_skill_card(record))
+            skill_cards.append(_build_skill_card(record, skill_subtype=skill_subtype))
             continue
         if decision == "anti_skill":
-            anti_skill_cards.append(_build_anti_skill_card(record))
+            anti_skill_cards.append(_build_anti_skill_card(record, skill_subtype=skill_subtype))
             continue
 
     return Phase3DistillationResult(
@@ -66,6 +66,7 @@ def write_phase3_exports(
     skills_dir = analysis_dir / "assets" / "skills"
     anti_dir = analysis_dir / "assets" / "anti_skills"
     exports_dir = analysis_dir / "exports"
+    readable_zh_dir = analysis_dir / "readable_zh"
     effective_target_authors, replace_all = _resolve_target_authors(
         explicit_target_authors=target_authors,
         inferred_target_authors=_target_authors_from_cards(result),
@@ -97,6 +98,7 @@ def write_phase3_exports(
         {
             "card_id": str(card["card_id"]),
             "card_kind": "skill",
+            "skill_subtype": str(card.get("skill_subtype", "")),
             "title": str(card["title"]),
             "status": str(card["status"]),
             "layer": str(card["layer"]),
@@ -108,6 +110,7 @@ def write_phase3_exports(
         {
             "card_id": str(card["card_id"]),
             "card_kind": "anti_skill",
+            "skill_subtype": str(card.get("skill_subtype", "")),
             "title": str(card["title"]),
             "status": str(card["status"]),
             "layer": str(card["layer"]),
@@ -123,30 +126,83 @@ def write_phase3_exports(
     ]
     merged_summary_rows = _merge_summary_rows(retained_summary_rows, new_summary_rows)
     _write_summary(summary_path, merged_summary_rows)
+    readable_paths = _write_readable_zh_exports(
+        readable_zh_dir,
+        skill_cards=result.skill_cards,
+        anti_skill_cards=result.anti_skill_cards,
+        target_authors=effective_target_authors,
+        replace_all=replace_all,
+    )
 
     return {
         "skills": skill_paths,
         "anti_skills": anti_paths,
         "summary": summary_path,
+        "readable_zh": readable_paths,
     }
 
 
-def _classify_record(record: dict[str, str]) -> str:
+def _classify_record(record: dict[str, str]) -> tuple[str, str]:
     confidence = (record.get("confidence_grade", "") or "").strip()
     ready = (record.get("ready_for_distillation", "") or "").strip()
     kind = (record.get("evidence_kind", "") or "").strip()
     if ready != "yes":
-        return "skip"
+        return "skip", ""
     if confidence not in {"E2", "E3", "E4"}:
-        return "skip"
-    if kind == "corroborated_pattern":
-        return "skill"
-    if kind == "rejected_pattern":
-        return "anti_skill"
-    return "skip"
+        return "skip", ""
+    if kind == "author_foundation_pattern":
+        if not _supports_positive_skill(record):
+            return "skip", ""
+        return "skill", "foundational_skill"
+    if kind == "differential_gain_pattern":
+        if not _supports_positive_skill(record):
+            return "skip", ""
+        return "skill", "gain_skill"
+    if kind == "cross_author_transfer_pattern":
+        if not _supports_positive_skill(record):
+            return "skip", ""
+        return "skill", "transferable_skill"
+    if kind == "negative_pattern":
+        if not _supports_negative_skill(record):
+            return "skip", ""
+        return "anti_skill", "negative_pattern"
+    return "skip", ""
 
 
-def _build_skill_card(record: dict[str, str]) -> dict[str, object]:
+def _supports_positive_skill(record: dict[str, str]) -> bool:
+    feature_name = _text(record, "feature_name")
+    feature_value = _text(record, "feature_value")
+    allowlist = {
+        "style_family": {"question_hook", "strong_claim", "contrarian_reframe", "story_led"},
+        "hook_type": {"question", "claim", "scene"},
+        "opening_problem_presence": {"yes"},
+        "opening_payoff_presence": {"yes"},
+        "argument_shape": {"example_led", "stepwise_explainer", "contrastive_argument"},
+        "cta_presence": {"yes"},
+        "cta_type": {"save", "follow", "interaction"},
+    }
+    return feature_value in allowlist.get(feature_name, set())
+
+
+def _supports_negative_skill(record: dict[str, str]) -> bool:
+    feature_name = _text(record, "feature_name")
+    feature_value = _text(record, "feature_value")
+    primary_goal = _text(record, "primary_goal")
+
+    if feature_name == "hook_type" and feature_value == "statement":
+        return True
+    if feature_name == "opening_problem_presence" and feature_value == "no":
+        return True
+    if feature_name == "opening_payoff_presence" and feature_value == "no":
+        return primary_goal in {"save", "follow", "interaction", "completion"}
+    if feature_name == "argument_shape" and feature_value == "straight_explainer":
+        return True
+    if feature_name == "cta_presence" and feature_value == "no":
+        return primary_goal in {"follow", "interaction"}
+    return False
+
+
+def _build_skill_card(record: dict[str, str], *, skill_subtype: str) -> dict[str, object]:
     feature_name = _text(record, "feature_name")
     feature_value = _text(record, "feature_value")
     evidence_id = _text(record, "evidence_id")
@@ -161,6 +217,7 @@ def _build_skill_card(record: dict[str, str]) -> dict[str, object]:
         "card_id": _card_id("skill", evidence_id, feature_name, feature_value),
         "title": title,
         "card_type": card_type,
+        "skill_subtype": skill_subtype,
         "status": status,
         "layer": layer,
         "priority": _priority_for_record(record),
@@ -181,22 +238,28 @@ def _build_skill_card(record: dict[str, str]) -> dict[str, object]:
         "execution_steps": _skill_execution_steps(feature_name, feature_value, record),
         "output_contract": _skill_output_contract(feature_name, feature_value),
         "evaluation_checks": _skill_evaluation_checks(feature_name, feature_value),
+        "production_actionability": _production_actionability(feature_name),
         "positive_examples": _positive_examples(record),
         "counter_examples": _skill_counter_examples(feature_name, feature_value),
         "evidence_refs": [evidence_id],
         "notes": _skill_notes(record),
+        "_title_zh": _skill_title_zh(feature_name, feature_value, skill_subtype=skill_subtype),
+        "_summary_zh": _skill_summary_zh(feature_name, feature_value, record, skill_subtype=skill_subtype),
+        "_source_feature_name": feature_name,
+        "_source_feature_value": feature_value,
         "_source_author": _text(record, "author"),
     }
     return _drop_empty_fields(card)
 
 
-def _build_anti_skill_card(record: dict[str, str]) -> dict[str, object]:
+def _build_anti_skill_card(record: dict[str, str], *, skill_subtype: str) -> dict[str, object]:
     feature_name = _text(record, "feature_name")
     feature_value = _text(record, "feature_value")
     evidence_id = _text(record, "evidence_id")
     card = {
         "card_id": _card_id("anti", evidence_id, feature_name, feature_value),
         "title": _anti_skill_title(feature_name, feature_value),
+        "skill_subtype": skill_subtype,
         "status": _status_from_confidence(_text(record, "confidence_grade")),
         "layer": _text(record, "layer") or "general",
         "priority": _priority_for_record(record),
@@ -212,8 +275,13 @@ def _build_anti_skill_card(record: dict[str, str]) -> dict[str, object]:
         "bad_examples": _positive_examples(record),
         "repair_examples": _anti_repair_examples(feature_name, feature_value),
         "evaluation_checks": _anti_evaluation_checks(feature_name, feature_value),
+        "production_actionability": "direct",
         "evidence_refs": [evidence_id],
         "notes": _text(record, "notes"),
+        "_title_zh": _anti_skill_title_zh(feature_name, feature_value),
+        "_summary_zh": _anti_skill_summary_zh(feature_name, feature_value, record),
+        "_source_feature_name": feature_name,
+        "_source_feature_value": feature_value,
         "_source_author": _text(record, "author"),
     }
     return _drop_empty_fields(card)
@@ -277,10 +345,49 @@ def _skill_title(feature_name: str, feature_value: str) -> str:
     mapping = {
         ("style_family", "question_hook"): "Question Hook Before Thesis Reveal",
         ("style_family", "strong_claim"): "Strong Claim Opening",
+        ("style_family", "contrarian_reframe"): "Contrarian Reframe Opening",
+        ("style_family", "story_led"): "Story-Led Scene Opening",
         ("argument_shape", "example_led"): "Example-Led Argument Progression",
+        ("argument_shape", "stepwise_explainer"): "Stepwise Argument Build",
+        ("argument_shape", "contrastive_argument"): "Contrastive Argument Framing",
         ("hook_type", "question"): "Direct Question Hook",
+        ("hook_type", "claim"): "Strong Claim Hook",
+        ("hook_type", "scene"): "Scene-Setting Hook",
+        ("opening_problem_presence", "yes"): "Open With A Concrete Viewer Problem",
+        ("opening_payoff_presence", "yes"): "Signal The Payoff Early",
+        ("cta_presence", "yes"): "Close With An Explicit Viewer Action",
+        ("cta_type", "save"): "Save-Oriented Close",
+        ("cta_type", "follow"): "Follow-Oriented Close",
+        ("cta_type", "interaction"): "Discussion-Oriented Close",
     }
     return mapping.get((feature_name, feature_value), f"Use {feature_name}={feature_value} As A Reusable Pattern")
+
+
+def _skill_title_zh(feature_name: str, feature_value: str, *, skill_subtype: str) -> str:
+    mapping = {
+        ("style_family", "question_hook"): "先提问题，再亮观点",
+        ("style_family", "strong_claim"): "开头先下明确判断",
+        ("style_family", "contrarian_reframe"): "先反常识，再展开解释",
+        ("style_family", "story_led"): "先铺一个具体场景",
+        ("argument_shape", "example_led"): "用例子带动论证推进",
+        ("argument_shape", "stepwise_explainer"): "按步骤拆开讲清楚",
+        ("argument_shape", "contrastive_argument"): "用对比把观点打透",
+        ("hook_type", "question"): "用明确问题做开头钩子",
+        ("hook_type", "claim"): "用强判断做开头钩子",
+        ("hook_type", "scene"): "用场景起手",
+        ("opening_problem_presence", "yes"): "开头先点出观众能感知的问题",
+        ("opening_payoff_presence", "yes"): "开头提前交代能得到什么",
+        ("cta_presence", "yes"): "结尾给出明确动作",
+        ("cta_type", "save"): "结尾收成收藏动作",
+        ("cta_type", "follow"): "结尾收成关注动作",
+        ("cta_type", "interaction"): "结尾收成评论互动动作",
+    }
+    title = mapping.get((feature_name, feature_value), f"使用 {feature_name}={feature_value} 这种结构动作")
+    if skill_subtype == "foundational_skill":
+        return f"基础能力：{title}"
+    if skill_subtype == "transferable_skill":
+        return f"可迁移能力：{title}"
+    return f"增益能力：{title}"
 
 
 def _anti_skill_title(feature_name: str, feature_value: str) -> str:
@@ -289,6 +396,14 @@ def _anti_skill_title(feature_name: str, feature_value: str) -> str:
         ("cta_presence", "no"): "Missing CTA When The Goal Needs One",
     }
     return mapping.get((feature_name, feature_value), f"Avoid {feature_name}={feature_value} In Weak Patterns")
+
+
+def _anti_skill_title_zh(feature_name: str, feature_value: str) -> str:
+    mapping = {
+        ("hook_type", "statement"): "不要用平铺直叙的弱开头",
+        ("cta_presence", "no"): "该收口时不要没有动作",
+    }
+    return mapping.get((feature_name, feature_value), f"避免 {feature_name}={feature_value} 这种弱稿模式")
 
 
 def _skill_triggers(feature_name: str, feature_value: str, record: dict[str, str]) -> list[str]:
@@ -397,6 +512,20 @@ def _skill_notes(record: dict[str, str]) -> str:
     return _text(record, "notes")
 
 
+def _production_actionability(feature_name: str) -> str:
+    if feature_name in {
+        "style_family",
+        "hook_type",
+        "opening_problem_presence",
+        "opening_payoff_presence",
+        "argument_shape",
+        "cta_presence",
+        "cta_type",
+    }:
+        return "direct"
+    return "needs_translation"
+
+
 def _anti_failure_pattern(feature_name: str, feature_value: str) -> str:
     if feature_name == "hook_type" and feature_value == "statement":
         return "The opening states information plainly without enough viewer tension or conflict."
@@ -461,6 +590,31 @@ def _positive_examples(record: dict[str, str]) -> list[str]:
     return [_text(record, "notes") or "See supporting evidence excerpt."]
 
 
+def _skill_summary_zh(feature_name: str, feature_value: str, record: dict[str, str], *, skill_subtype: str) -> str:
+    route = _route_text_zh(record)
+    base = {
+        "foundational_skill": "这更像该作者长期稳定在用的基础能力，不是只在高稿里偶然出现的技巧。",
+        "gain_skill": "这更像高稿比低稿更常出现的增益动作，适合当成提升项来用。",
+        "transferable_skill": "这条已经不只局限在单一作者，适合当成更可迁移的共性能力。",
+    }.get(skill_subtype, "")
+    return f"{_skill_title_zh(feature_name, feature_value, skill_subtype=skill_subtype)}。{base} 当前适用范围：{route}。"
+
+
+def _anti_skill_summary_zh(feature_name: str, feature_value: str, record: dict[str, str]) -> str:
+    return (
+        f"{_anti_skill_title_zh(feature_name, feature_value)}。"
+        f"这类模式在当前证据里更常落在弱稿一侧，适用范围：{_route_text_zh(record)}。"
+    )
+
+
+def _route_text_zh(record: dict[str, str]) -> str:
+    content_type = _enum_zh(_text(record, "content_type")) or "未指定内容类型"
+    format_value = _enum_zh(_text(record, "format")) or "未指定形式"
+    goal = _enum_zh(_text(record, "primary_goal")) or "未指定目标"
+    domain = _enum_zh(_text(record, "domain")) or "未指定领域"
+    return f"内容类型={content_type}，形式={format_value}，目标={goal}，领域={domain}"
+
+
 def _list_if_text(value: str) -> list[str]:
     return [value] if value else []
 
@@ -474,6 +628,313 @@ def _drop_empty_fields(payload: dict[str, object]) -> dict[str, object]:
             continue
         cleaned[key] = value
     return cleaned
+
+
+def _write_readable_zh_exports(
+    readable_zh_dir: Path,
+    *,
+    skill_cards: list[dict[str, object]],
+    anti_skill_cards: list[dict[str, object]],
+    target_authors: tuple[str, ...],
+    replace_all: bool,
+) -> dict[str, Path]:
+    skill_csv_path = readable_zh_dir / "skills_zh.csv"
+    anti_csv_path = readable_zh_dir / "anti_skills_zh.csv"
+    skill_md_path = readable_zh_dir / "skills_zh.md"
+    anti_md_path = readable_zh_dir / "anti_skills_zh.md"
+
+    skill_rows = [_readable_skill_row(card) for card in skill_cards]
+    anti_rows = [_readable_anti_skill_row(card) for card in anti_skill_cards]
+    existing_skill_rows = read_csv_rows(skill_csv_path) if skill_csv_path.exists() else []
+    existing_anti_rows = read_csv_rows(anti_csv_path) if anti_csv_path.exists() else []
+    retained_skill_rows = [] if replace_all else [
+        row
+        for row in existing_skill_rows
+        if not target_authors or (row.get("作者来源", "") or "").strip() not in target_authors
+    ]
+    retained_anti_rows = [] if replace_all else [
+        row
+        for row in existing_anti_rows
+        if not target_authors or (row.get("作者来源", "") or "").strip() not in target_authors
+    ]
+    merged_skill_rows = _merge_readable_rows(retained_skill_rows, skill_rows)
+    merged_anti_rows = _merge_readable_rows(retained_anti_rows, anti_rows)
+
+    ensure_parent_dir(skill_csv_path)
+    write_csv_rows(skill_csv_path, _summary_fieldnames(merged_skill_rows), merged_skill_rows)
+    write_csv_rows(anti_csv_path, _summary_fieldnames(merged_anti_rows), merged_anti_rows)
+    skill_md_path.write_text(_render_readable_markdown("正向技能", merged_skill_rows), encoding="utf-8")
+    anti_md_path.write_text(_render_readable_markdown("反面禁忌", merged_anti_rows), encoding="utf-8")
+    return {
+        "skills_csv": skill_csv_path,
+        "anti_skills_csv": anti_csv_path,
+        "skills_md": skill_md_path,
+        "anti_skills_md": anti_md_path,
+    }
+
+
+def _readable_skill_row(card: dict[str, object]) -> dict[str, str]:
+    feature_name = str(card.get("_source_feature_name", ""))
+    feature_value = str(card.get("_source_feature_value", ""))
+    return {
+        "系统卡片ID": str(card.get("card_id", "")),
+        "卡片类型": "正向技能",
+        "技能子类": _skill_subtype_zh(str(card.get("skill_subtype", ""))),
+        "状态": _status_zh(str(card.get("status", ""))),
+        "作者来源": str(card.get("_source_author", "")),
+        "中文标题": str(card.get("_title_zh", "")),
+        "适用层级": _layer_zh(str(card.get("layer", ""))),
+        "适用内容类型": _join_zh(card.get("content_types", [])),
+        "适用形式": _join_zh(card.get("formats", [])),
+        "适用领域": _join_zh(card.get("domains", [])),
+        "适用目标": _join_zh(card.get("goals", [])),
+        "何时使用": "；".join(_zh_skill_triggers(feature_name, feature_value, card)),
+        "如何执行": "；".join(_zh_skill_execution_steps(feature_name, feature_value, card)),
+        "输出要求": "；".join(_zh_skill_output_contract(feature_name, feature_value)),
+        "检查方式": "；".join(_zh_skill_evaluation_checks(feature_name, feature_value)),
+        "中文说明": str(card.get("_summary_zh", "")),
+        "证据ID": " | ".join(str(item) for item in card.get("evidence_refs", [])),
+    }
+
+
+def _readable_anti_skill_row(card: dict[str, object]) -> dict[str, str]:
+    feature_name = str(card.get("_source_feature_name", ""))
+    feature_value = str(card.get("_source_feature_value", ""))
+    return {
+        "系统卡片ID": str(card.get("card_id", "")),
+        "卡片类型": "反面禁忌",
+        "技能子类": "失败模式",
+        "状态": _status_zh(str(card.get("status", ""))),
+        "作者来源": str(card.get("_source_author", "")),
+        "中文标题": str(card.get("_title_zh", "")),
+        "适用层级": _layer_zh(str(card.get("layer", ""))),
+        "适用内容类型": _join_zh(card.get("content_types", [])),
+        "适用形式": _join_zh(card.get("formats", [])),
+        "适用领域": _join_zh(card.get("domains", [])),
+        "适用目标": _join_zh(card.get("goals", [])),
+        "失败表现": _zh_anti_failure_pattern(feature_name, feature_value),
+        "识别信号": "；".join(_zh_anti_detection_signals(feature_name, feature_value)),
+        "修正动作": "；".join(_zh_anti_prevention_actions(feature_name, feature_value)),
+        "检查方式": "；".join(_zh_anti_evaluation_checks(feature_name, feature_value)),
+        "中文说明": str(card.get("_summary_zh", "")),
+        "证据ID": " | ".join(str(item) for item in card.get("evidence_refs", [])),
+    }
+
+
+def _render_readable_markdown(title: str, rows: list[dict[str, str]]) -> str:
+    lines = [f"# {title}", ""]
+    if not rows:
+        lines.append("暂无导出结果。")
+        lines.append("")
+        return "\n".join(lines)
+    for row in rows:
+        heading = row.get("中文标题") or row.get("英文标题") or row.get("卡片ID", "")
+        lines.append(f"## {heading}")
+        for key, value in row.items():
+            if key == "中文标题":
+                continue
+            if not value:
+                continue
+            lines.append(f"- {key}：{value}")
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _merge_readable_rows(existing_rows: list[dict[str, str]], new_rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    merged_by_card_id: dict[str, dict[str, str]] = {}
+    for row in existing_rows + new_rows:
+        card_id = (row.get("系统卡片ID", "") or "").strip()
+        if not card_id:
+            continue
+        merged_by_card_id[card_id] = row
+    return list(merged_by_card_id.values())
+
+
+def _join_zh(values: object) -> str:
+    if not isinstance(values, list):
+        return ""
+    return " / ".join(_enum_zh(str(value)) for value in values if str(value).strip())
+
+
+def _zh_skill_triggers(feature_name: str, feature_value: str, card: dict[str, object]) -> list[str]:
+    route = _card_route_text_zh(card)
+    mapping = {
+        ("style_family", "question_hook"): ["适合需要先把观众疑问抛出来，再进入核心观点的长口播。", route],
+        ("style_family", "strong_claim"): ["适合需要先下判断、再解释原因的内容。", route],
+        ("style_family", "contrarian_reframe"): ["适合先打破观众旧认知，再重建解释框架的内容。", route],
+        ("style_family", "story_led"): ["适合需要先用一个具体场景把人带进去的内容。", route],
+        ("hook_type", "question"): ["适合开头就要把观众拉进问题里的内容。", route],
+        ("hook_type", "claim"): ["适合开头先亮立场、先给判断的内容。", route],
+        ("hook_type", "scene"): ["适合靠画面感或情境感起手的内容。", route],
+        ("opening_problem_presence", "yes"): ["适合需要快速建立代入感和痛点感的内容。", route],
+        ("opening_payoff_presence", "yes"): ["适合一开头就要告诉观众能得到什么的内容。", route],
+        ("argument_shape", "example_led"): ["适合抽象观点需要用例子撑住的内容。", route],
+        ("argument_shape", "stepwise_explainer"): ["适合需要分层拆开、逐步讲透的内容。", route],
+        ("argument_shape", "contrastive_argument"): ["适合用对比让观点更清楚的内容。", route],
+        ("cta_presence", "yes"): ["适合目标明确需要收动作的内容。", route],
+        ("cta_type", "save"): ["适合知识密度高、希望用户收藏回看的内容。", route],
+        ("cta_type", "follow"): ["适合人设或系列内容，希望用户继续跟更后续的内容。", route],
+        ("cta_type", "interaction"): ["适合需要评论区承接讨论或争议的内容。", route],
+    }
+    return mapping.get((feature_name, feature_value), [f"适合使用 {feature_name}={feature_value} 这类结构动作时。", route])
+
+
+def _zh_skill_execution_steps(feature_name: str, feature_value: str, card: dict[str, object]) -> list[str]:
+    mapping = {
+        ("style_family", "question_hook"): ["开头先抛一个具体问题。", "紧接着给出真正的矛盾或机制。", "不要在问题和正文之间塞太多空铺垫。"],
+        ("style_family", "strong_claim"): ["开头先下一个明确判断。", "后面立刻补原因或证据。", "不要只喊观点不展开。"],
+        ("style_family", "contrarian_reframe"): ["先指出多数人的常见误解。", "再给出真正的解释框架。", "后文围绕这个反转继续推进。"],
+        ("style_family", "story_led"): ["先给一个具体场景或瞬间。", "让场景自然引出主题。", "不要只讲故事不回到观点。"],
+        ("hook_type", "question"): ["开头用一句明确问题起手。", "问题里要带观众关心的利害点。", "正文尽快回应或升级这个问题。"],
+        ("hook_type", "claim"): ["开头直接亮判断。", "第二步补解释。", "避免只剩口号。"],
+        ("hook_type", "scene"): ["开头先落一个画面或情境。", "快速让场景服务主题。", "不要让场景喧宾夺主。"],
+        ("opening_problem_presence", "yes"): ["前 3 到 5 句内点出观众能感知的问题。", "问题要具体，不要泛泛而谈。", "后文围绕这个问题推进。"],
+        ("opening_payoff_presence", "yes"): ["前面直接告诉观众能看懂什么。", "收益说清楚但不要夸张。", "后文真的兑现这个收益。"],
+        ("argument_shape", "example_led"): ["先给观点。", "再上一个具体例子。", "最后把例子重新扣回观点。"],
+        ("argument_shape", "stepwise_explainer"): ["把内容拆成清晰的 2 到 4 步。", "每一步只讲一个推进点。", "讲完一步再进入下一步。"],
+        ("argument_shape", "contrastive_argument"): ["先摆出两个对象或两个方向。", "逐项对比差异。", "最后明确哪一边更成立以及为什么。"],
+        ("cta_presence", "yes"): ["正文收尾时给出明确动作。", "动作要和正文价值一致。", "不要突然硬切。"],
+        ("cta_type", "save"): ["把结尾收成收藏动作。", "强调这条内容适合回看。", "不要空喊记得收藏。"],
+        ("cta_type", "follow"): ["把结尾收成关注动作。", "说明后续还有什么延展内容。", "让关注理由具体。"],
+        ("cta_type", "interaction"): ["把结尾收成评论或讨论动作。", "问题要具体。", "让互动和正文核心矛盾一致。"],
+    }
+    return mapping.get((feature_name, feature_value), ["把这个结构动作放到它该在的位置。", "让它服务主观点，不要只做表面装饰。", "完成后再顺势进入下一段。"])
+
+
+def _zh_skill_output_contract(feature_name: str, feature_value: str) -> list[str]:
+    mapping = {
+        ("style_family", "question_hook"): ["观众能立刻听出问题是什么。", "问题后很快进入正文，不拖。"],
+        ("hook_type", "question"): ["开头有明确问题。", "问题不是摆设，后文会回应。"],
+        ("hook_type", "claim"): ["开头有明确判断。", "判断后跟得上解释。"],
+        ("opening_problem_presence", "yes"): ["开头明确出现观众问题。", "问题能带动继续看下去。"],
+        ("opening_payoff_presence", "yes"): ["开头就说清楚能得到什么。", "后文兑现承诺。"],
+        ("argument_shape", "example_led"): ["例子确实在推进论证。", "例子讲完还能回到观点。"],
+        ("argument_shape", "stepwise_explainer"): ["结构层次清楚。", "每一步都在推进。"],
+        ("argument_shape", "contrastive_argument"): ["对比对象清晰。", "比较维度明确。"],
+        ("cta_presence", "yes"): ["结尾有明确动作。", "动作和正文一致。"],
+    }
+    return mapping.get((feature_name, feature_value), [f"成稿里能明显看到 {feature_name}={feature_value} 这个动作。"])
+
+
+def _zh_skill_evaluation_checks(feature_name: str, feature_value: str) -> list[str]:
+    mapping = {
+        ("style_family", "question_hook"): ["观众能马上知道问题点。", "开头没有空铺垫。"],
+        ("hook_type", "question"): ["问题是否具体。", "问题是否承接正文。"],
+        ("hook_type", "claim"): ["判断是否清楚。", "判断后是否紧跟解释。"],
+        ("opening_problem_presence", "yes"): ["问题是否在前面几句内出现。", "问题是否能让观众继续听。"],
+        ("opening_payoff_presence", "yes"): ["收益是否说清楚。", "收益是否在正文里兑现。"],
+        ("argument_shape", "example_led"): ["例子有没有服务观点。", "例子讲完有没有扣回主线。"],
+        ("argument_shape", "stepwise_explainer"): ["层次是否清楚。", "有没有某一步明显断掉。"],
+        ("argument_shape", "contrastive_argument"): ["对比是否清楚。", "结论是否明确。"],
+        ("cta_presence", "yes"): ["动作是否明确。", "动作是否自然。"],
+    }
+    return mapping.get((feature_name, feature_value), ["检查这个动作是不是只停留在表面词句，没有真正起结构作用。"])
+
+
+def _zh_anti_failure_pattern(feature_name: str, feature_value: str) -> str:
+    mapping = {
+        ("hook_type", "statement"): "开头只是平铺信息，没有把观众拉进矛盾里。",
+        ("opening_problem_presence", "no"): "开头没有先点出观众问题，导致代入感不足。",
+        ("opening_payoff_presence", "no"): "开头没有提前交代收益，导致继续看的理由不够强。",
+        ("argument_shape", "straight_explainer"): "正文一路平讲，没有形成推进或转折。",
+    }
+    return mapping.get((feature_name, feature_value), f"{feature_name}={feature_value} 这类结构动作更常出现在弱稿模式里。")
+
+
+def _zh_anti_detection_signals(feature_name: str, feature_value: str) -> list[str]:
+    mapping = {
+        ("hook_type", "statement"): ["开头像背景介绍。", "前面几句没有明显矛盾点。"],
+        ("opening_problem_presence", "no"): ["开头听完还不知道观众的问题是什么。", "内容像作者在自说自话。"],
+        ("opening_payoff_presence", "no"): ["开头听完还不知道这一条能带来什么。", "收益感弱。"],
+        ("argument_shape", "straight_explainer"): ["内容一直在平推。", "中段没有明显推进节点。"],
+    }
+    return mapping.get((feature_name, feature_value), ["这个动作在弱稿里反复出现。", "它削弱了当前槽位本来该承担的作用。"])
+
+
+def _zh_anti_prevention_actions(feature_name: str, feature_value: str) -> list[str]:
+    mapping = {
+        ("hook_type", "statement"): ["把平叙句改成问题、判断或冲突。", "删掉没有 stakes 的开头背景。"],
+        ("opening_problem_presence", "no"): ["前 3 到 5 句内补一个具体问题。", "让观众先知道这条要解决什么。"],
+        ("opening_payoff_presence", "no"): ["开头补一句明确收益。", "让观众知道看完能得到什么。"],
+        ("argument_shape", "straight_explainer"): ["把正文拆成步骤、对比或例子推进。", "不要只靠平讲撑完全程。"],
+    }
+    return mapping.get((feature_name, feature_value), ["减少这种弱动作。", "换成更能承担结构任务的写法。"])
+
+
+def _zh_anti_evaluation_checks(feature_name: str, feature_value: str) -> list[str]:
+    mapping = {
+        ("hook_type", "statement"): ["开头是否已经有 tension。", "观众是否有继续看的理由。"],
+        ("opening_problem_presence", "no"): ["问题是否已提前出现。", "观众是否更容易代入。"],
+        ("opening_payoff_presence", "no"): ["收益是否已交代。", "开头是否更有继续看的理由。"],
+        ("argument_shape", "straight_explainer"): ["正文是否有推进节点。", "听感是否不再像平铺直叙。"],
+    }
+    return mapping.get((feature_name, feature_value), ["检查这类弱模式是否已经不再主导当前槽位。"])
+
+
+def _card_route_text_zh(card: dict[str, object]) -> str:
+    return (
+        f"适用内容类型={_join_zh(card.get('content_types', [])) or '未指定'}，"
+        f"形式={_join_zh(card.get('formats', [])) or '未指定'}，"
+        f"目标={_join_zh(card.get('goals', [])) or '未指定'}，"
+        f"领域={_join_zh(card.get('domains', [])) or '未指定'}"
+    )
+
+
+def _skill_subtype_zh(value: str) -> str:
+    mapping = {
+        "foundational_skill": "基础能力",
+        "gain_skill": "增益能力",
+        "transferable_skill": "可迁移能力",
+    }
+    return mapping.get(value, value)
+
+
+def _layer_zh(value: str) -> str:
+    mapping = {
+        "general": "通用层",
+        "content_type": "内容类型层",
+        "style_family": "风格层",
+        "author_signature": "作者特征层",
+        "cross_layer": "跨层",
+    }
+    return mapping.get(value, value)
+
+
+def _enum_zh(value: str) -> str:
+    mapping = {
+        "concept_explainer": "概念拆解",
+        "comparison_review": "对比评述",
+        "method_walkthrough": "方法/机制拆解",
+        "historical_interpretation": "历史解读",
+        "book_digest": "书摘解读",
+        "long_explainer": "长讲解",
+        "short_monologue": "短口播",
+        "list_countdown": "列表式结构",
+        "debate_showdown": "对抗/对决",
+        "history": "历史",
+        "philosophy": "哲学",
+        "cognition": "认知",
+        "books": "书籍",
+        "ai": "AI",
+        "politics": "政治",
+        "business": "商业",
+        "science": "科学",
+        "save": "收藏",
+        "follow": "关注",
+        "interaction": "互动",
+        "completion": "完播",
+    }
+    return mapping.get(value, value)
+
+
+def _status_zh(value: str) -> str:
+    mapping = {
+        "candidate": "候选",
+        "validated": "已验证",
+        "active": "启用",
+        "deprecated": "弃用",
+    }
+    return mapping.get(value, value)
 
 
 def _text(record: dict[str, str], field: str) -> str:

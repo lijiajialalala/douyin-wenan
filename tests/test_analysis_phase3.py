@@ -21,7 +21,10 @@ class Phase3DistillationTests(unittest.TestCase):
         evidence_records = [
             {
                 "evidence_id": "ev_pos_001",
-                "evidence_kind": "corroborated_pattern",
+                "evidence_kind": "author_foundation_pattern",
+                "evidence_origin": "foundation",
+                "evidence_polarity": "positive",
+                "transfer_scope": "author_local",
                 "author": "柏拉图的石头",
                 "scope": "same_author",
                 "layer": "style_family",
@@ -37,6 +40,13 @@ class Phase3DistillationTests(unittest.TestCase):
                 "metric_value": "0.2083",
                 "support_count": "13",
                 "contradiction_count": "8",
+                "support_prevalence": "0.72",
+                "baseline_prevalence": "0.46",
+                "support_sample_size": "18",
+                "baseline_sample_size": "40",
+                "route_content_type": "concept_explainer",
+                "route_format": "long_explainer",
+                "route_goal": "save",
                 "confidence_grade": "E2",
                 "ready_for_distillation": "yes",
                 "source_excerpt": "为什么同样是太监干政，唐朝太监却能废立天子？",
@@ -45,7 +55,10 @@ class Phase3DistillationTests(unittest.TestCase):
             },
             {
                 "evidence_id": "ev_neg_001",
-                "evidence_kind": "rejected_pattern",
+                "evidence_kind": "negative_pattern",
+                "evidence_origin": "differential",
+                "evidence_polarity": "negative",
+                "transfer_scope": "author_local",
                 "author": "柏拉图的石头",
                 "scope": "same_author",
                 "layer": "general",
@@ -61,6 +74,13 @@ class Phase3DistillationTests(unittest.TestCase):
                 "metric_value": "-0.2500",
                 "support_count": "15",
                 "contradiction_count": "9",
+                "support_prevalence": "0.58",
+                "contrast_prevalence": "0.33",
+                "support_sample_size": "24",
+                "contrast_sample_size": "24",
+                "route_content_type": "concept_explainer",
+                "route_format": "long_explainer",
+                "route_goal": "completion",
                 "confidence_grade": "E2",
                 "ready_for_distillation": "yes",
                 "source_excerpt": "想必很多人都知道初中数学中的勾股定理。",
@@ -70,6 +90,9 @@ class Phase3DistillationTests(unittest.TestCase):
             {
                 "evidence_id": "ev_weak_001",
                 "evidence_kind": "contrast_finding",
+                "evidence_origin": "differential",
+                "evidence_polarity": "mixed",
+                "transfer_scope": "author_local",
                 "author": "柏拉图的石头",
                 "scope": "same_author",
                 "layer": "general",
@@ -85,6 +108,13 @@ class Phase3DistillationTests(unittest.TestCase):
                 "metric_value": "0.1667",
                 "support_count": "4",
                 "contradiction_count": "0",
+                "support_prevalence": "0.40",
+                "contrast_prevalence": "0.23",
+                "support_sample_size": "10",
+                "contrast_sample_size": "10",
+                "route_content_type": "concept_explainer",
+                "route_format": "long_explainer",
+                "route_goal": "completion",
                 "confidence_grade": "E1",
                 "ready_for_distillation": "no",
                 "source_excerpt": "评论区告诉我你怎么看。",
@@ -102,13 +132,16 @@ class Phase3DistillationTests(unittest.TestCase):
         skill_card = result.skill_cards[0]
         self.assertEqual(skill_card["status"], "candidate")
         self.assertEqual(skill_card["card_type"], "skill")
+        self.assertEqual(skill_card["skill_subtype"], "foundational_skill")
         self.assertEqual(skill_card["layer"], "style_family")
         self.assertIn("hook", skill_card["slots"])
         self.assertIn("question_hook", skill_card["style_families"])
+        self.assertEqual(skill_card["production_actionability"], "direct")
         self.assertEqual(skill_card["evidence_refs"], ["ev_pos_001"])
 
         anti_card = result.anti_skill_cards[0]
         self.assertEqual(anti_card["status"], "candidate")
+        self.assertEqual(anti_card["skill_subtype"], "negative_pattern")
         self.assertEqual(anti_card["layer"], "general")
         self.assertIn("long_explainer", anti_card["formats"])
         self.assertEqual(anti_card["evidence_refs"], ["ev_neg_001"])
@@ -117,7 +150,10 @@ class Phase3DistillationTests(unittest.TestCase):
         evidence_records = [
             {
                 "evidence_id": "ev_pos_001",
-                "evidence_kind": "corroborated_pattern",
+                "evidence_kind": "author_foundation_pattern",
+                "evidence_origin": "foundation",
+                "evidence_polarity": "positive",
+                "transfer_scope": "author_local",
                 "author": "柏拉图的石头",
                 "scope": "same_author",
                 "layer": "style_family",
@@ -133,6 +169,13 @@ class Phase3DistillationTests(unittest.TestCase):
                 "metric_value": "0.2083",
                 "support_count": "13",
                 "contradiction_count": "8",
+                "support_prevalence": "0.72",
+                "baseline_prevalence": "0.46",
+                "support_sample_size": "18",
+                "baseline_sample_size": "40",
+                "route_content_type": "concept_explainer",
+                "route_format": "long_explainer",
+                "route_goal": "save",
                 "confidence_grade": "E2",
                 "ready_for_distillation": "yes",
                 "source_excerpt": "为什么同样是太监干政，唐朝太监却能废立天子？",
@@ -141,7 +184,10 @@ class Phase3DistillationTests(unittest.TestCase):
             },
             {
                 "evidence_id": "ev_neg_001",
-                "evidence_kind": "rejected_pattern",
+                "evidence_kind": "negative_pattern",
+                "evidence_origin": "differential",
+                "evidence_polarity": "negative",
+                "transfer_scope": "author_local",
                 "author": "柏拉图的石头",
                 "scope": "same_author",
                 "layer": "general",
@@ -157,6 +203,13 @@ class Phase3DistillationTests(unittest.TestCase):
                 "metric_value": "-0.2500",
                 "support_count": "15",
                 "contradiction_count": "9",
+                "support_prevalence": "0.58",
+                "contrast_prevalence": "0.33",
+                "support_sample_size": "24",
+                "contrast_sample_size": "24",
+                "route_content_type": "concept_explainer",
+                "route_format": "long_explainer",
+                "route_goal": "completion",
                 "confidence_grade": "E2",
                 "ready_for_distillation": "yes",
                 "source_excerpt": "想必很多人都知道初中数学中的勾股定理。",
@@ -178,6 +231,8 @@ class Phase3DistillationTests(unittest.TestCase):
             self.assertFalse([issue for issue in skill_schema.validate_document(skill_card) if issue.level == "error"])
             self.assertFalse([issue for issue in anti_schema.validate_document(anti_card) if issue.level == "error"])
             self.assertTrue(paths["summary"].exists())
+            self.assertTrue(paths["readable_zh"]["skills_csv"].exists())
+            self.assertTrue(paths["readable_zh"]["anti_skills_md"].exists())
             self.assertNotIn("_source_author", skill_card)
             self.assertNotIn("_source_author", anti_card)
 
@@ -188,7 +243,10 @@ class Phase3DistillationTests(unittest.TestCase):
                 [
                     {
                         "evidence_id": "ev_pos_a",
-                        "evidence_kind": "corroborated_pattern",
+                        "evidence_kind": "author_foundation_pattern",
+                        "evidence_origin": "foundation",
+                        "evidence_polarity": "positive",
+                        "transfer_scope": "author_local",
                         "author": "作者A",
                         "scope": "same_author",
                         "layer": "style_family",
@@ -204,6 +262,13 @@ class Phase3DistillationTests(unittest.TestCase):
                         "metric_value": "0.25",
                         "support_count": "6",
                         "contradiction_count": "2",
+                        "support_prevalence": "0.70",
+                        "baseline_prevalence": "0.45",
+                        "support_sample_size": "10",
+                        "baseline_sample_size": "20",
+                        "route_content_type": "concept_explainer",
+                        "route_format": "long_explainer",
+                        "route_goal": "save",
                         "confidence_grade": "E2",
                         "ready_for_distillation": "yes",
                         "source_excerpt": "为什么会这样？",
@@ -216,7 +281,10 @@ class Phase3DistillationTests(unittest.TestCase):
                 [
                     {
                         "evidence_id": "ev_neg_b",
-                        "evidence_kind": "rejected_pattern",
+                        "evidence_kind": "negative_pattern",
+                        "evidence_origin": "differential",
+                        "evidence_polarity": "negative",
+                        "transfer_scope": "author_local",
                         "author": "作者B",
                         "scope": "same_author",
                         "layer": "general",
@@ -232,6 +300,13 @@ class Phase3DistillationTests(unittest.TestCase):
                         "metric_value": "-0.25",
                         "support_count": "7",
                         "contradiction_count": "1",
+                        "support_prevalence": "0.65",
+                        "contrast_prevalence": "0.32",
+                        "support_sample_size": "11",
+                        "contrast_sample_size": "11",
+                        "route_content_type": "concept_explainer",
+                        "route_format": "long_explainer",
+                        "route_goal": "completion",
                         "confidence_grade": "E2",
                         "ready_for_distillation": "yes",
                         "source_excerpt": "今天聊聊一个背景。",
@@ -243,10 +318,17 @@ class Phase3DistillationTests(unittest.TestCase):
 
             write_phase3_exports(author_a, tmp)
             write_phase3_exports(author_b, tmp)
+            write_phase3_exports(author_a, tmp, target_authors=("作者A",))
 
             summary_rows = read_csv_rows(tmp / "exports" / "phase3_candidates.csv")
+            skill_rows = read_csv_rows(tmp / "readable_zh" / "skills_zh.csv")
+            anti_rows = read_csv_rows(tmp / "readable_zh" / "anti_skills_zh.csv")
             self.assertEqual({row["source_author"] for row in summary_rows}, {"作者A", "作者B"})
             self.assertEqual(len(summary_rows), 2)
+            self.assertEqual({row["作者来源"] for row in skill_rows}, {"作者A"})
+            self.assertEqual({row["作者来源"] for row in anti_rows}, {"作者B"})
+            self.assertIn("基础能力：先提问题，再亮观点", (tmp / "readable_zh" / "skills_zh.md").read_text(encoding="utf-8"))
+            self.assertIn("不要用平铺直叙的弱开头", (tmp / "readable_zh" / "anti_skills_zh.md").read_text(encoding="utf-8"))
             self.assertTrue((tmp / "assets" / "skills").exists())
             self.assertTrue((tmp / "assets" / "anti_skills").exists())
 
@@ -259,7 +341,10 @@ class Phase3DistillationTests(unittest.TestCase):
                 [
                     {
                         "evidence_id": "ev_pos_new",
-                        "evidence_kind": "corroborated_pattern",
+                        "evidence_kind": "author_foundation_pattern",
+                        "evidence_origin": "foundation",
+                        "evidence_polarity": "positive",
+                        "transfer_scope": "author_local",
                         "author": "作者C",
                         "scope": "same_author",
                         "layer": "style_family",
@@ -275,6 +360,13 @@ class Phase3DistillationTests(unittest.TestCase):
                         "metric_value": "0.25",
                         "support_count": "6",
                         "contradiction_count": "2",
+                        "support_prevalence": "0.70",
+                        "baseline_prevalence": "0.45",
+                        "support_sample_size": "10",
+                        "baseline_sample_size": "20",
+                        "route_content_type": "concept_explainer",
+                        "route_format": "long_explainer",
+                        "route_goal": "save",
                         "confidence_grade": "E2",
                         "ready_for_distillation": "yes",
                         "source_excerpt": "为什么会这样？",
@@ -303,7 +395,10 @@ class Phase3DistillationTests(unittest.TestCase):
                 [
                     {
                         "evidence_id": "ev_pos_a",
-                        "evidence_kind": "corroborated_pattern",
+                        "evidence_kind": "author_foundation_pattern",
+                        "evidence_origin": "foundation",
+                        "evidence_polarity": "positive",
+                        "transfer_scope": "author_local",
                         "author": "作者A",
                         "scope": "same_author",
                         "layer": "style_family",
@@ -319,6 +414,13 @@ class Phase3DistillationTests(unittest.TestCase):
                         "metric_value": "0.25",
                         "support_count": "6",
                         "contradiction_count": "2",
+                        "support_prevalence": "0.70",
+                        "baseline_prevalence": "0.45",
+                        "support_sample_size": "10",
+                        "baseline_sample_size": "20",
+                        "route_content_type": "concept_explainer",
+                        "route_format": "long_explainer",
+                        "route_goal": "save",
                         "confidence_grade": "E2",
                         "ready_for_distillation": "yes",
                         "source_excerpt": "为什么会这样？",
@@ -331,7 +433,10 @@ class Phase3DistillationTests(unittest.TestCase):
                 [
                     {
                         "evidence_id": "ev_neg_b",
-                        "evidence_kind": "rejected_pattern",
+                        "evidence_kind": "negative_pattern",
+                        "evidence_origin": "differential",
+                        "evidence_polarity": "negative",
+                        "transfer_scope": "author_local",
                         "author": "作者B",
                         "scope": "same_author",
                         "layer": "general",
@@ -347,6 +452,13 @@ class Phase3DistillationTests(unittest.TestCase):
                         "metric_value": "-0.25",
                         "support_count": "7",
                         "contradiction_count": "1",
+                        "support_prevalence": "0.65",
+                        "contrast_prevalence": "0.32",
+                        "support_sample_size": "11",
+                        "contrast_sample_size": "11",
+                        "route_content_type": "concept_explainer",
+                        "route_format": "long_explainer",
+                        "route_goal": "completion",
                         "confidence_grade": "E2",
                         "ready_for_distillation": "yes",
                         "source_excerpt": "今天聊聊一个背景。",
@@ -367,8 +479,14 @@ class Phase3DistillationTests(unittest.TestCase):
             )
 
             summary_rows = read_csv_rows(tmp / "exports" / "phase3_candidates.csv")
+            skill_rows = read_csv_rows(tmp / "readable_zh" / "skills_zh.csv")
+            anti_rows = read_csv_rows(tmp / "readable_zh" / "anti_skills_zh.csv")
             self.assertEqual({row["source_author"] for row in summary_rows}, {"作者B"})
             self.assertFalse(any("作者A" == row["source_author"] for row in summary_rows))
+            self.assertEqual(skill_rows, [])
+            self.assertEqual({row["作者来源"] for row in anti_rows}, {"作者B"})
+            self.assertIn("暂无导出结果。", (tmp / "readable_zh" / "skills_zh.md").read_text(encoding="utf-8"))
+            self.assertIn("不要用平铺直叙的弱开头", (tmp / "readable_zh" / "anti_skills_zh.md").read_text(encoding="utf-8"))
             for card_id in author_a_card_ids:
                 self.assertFalse((tmp / "assets" / "skills" / f"{card_id}.yaml").exists())
                 self.assertFalse((tmp / "assets" / "anti_skills" / f"{card_id}.yaml").exists())
@@ -379,6 +497,92 @@ class Phase3DistillationTests(unittest.TestCase):
                     for card_id in author_b_card_ids
                 )
             )
+
+    def test_distill_phase3_skips_low_value_positive_descriptor_patterns(self) -> None:
+        evidence_records = [
+            {
+                "evidence_id": "ev_pos_skip_001",
+                "evidence_kind": "differential_gain_pattern",
+                "evidence_origin": "differential",
+                "evidence_polarity": "positive",
+                "transfer_scope": "author_local",
+                "author": "作者A",
+                "scope": "same_author",
+                "layer": "general",
+                "content_type": "concept_explainer",
+                "format": "long_explainer",
+                "domain": "history",
+                "primary_goal": "completion",
+                "style_family": "cold_explainer",
+                "author_signature": "",
+                "feature_name": "hook_type",
+                "feature_value": "statement",
+                "metric_name": "high_low_rate_gap",
+                "metric_value": "0.23",
+                "support_count": "9",
+                "contradiction_count": "3",
+                "support_prevalence": "0.63",
+                "contrast_prevalence": "0.40",
+                "support_sample_size": "14",
+                "contrast_sample_size": "14",
+                "route_content_type": "concept_explainer",
+                "route_format": "long_explainer",
+                "route_goal": "completion",
+                "confidence_grade": "E2",
+                "ready_for_distillation": "yes",
+                "source_excerpt": "今天聊聊一个背景。",
+                "evidence_refs": "a1|a2",
+                "notes": "descriptive but not reusable enough",
+            }
+        ]
+
+        result = distill_phase3_cards(evidence_records)
+        self.assertEqual(result.skill_cards, [])
+        self.assertEqual(result.anti_skill_cards, [])
+        self.assertEqual(len(result.skipped_records), 1)
+
+    def test_distill_phase3_skips_low_value_negative_descriptor_patterns(self) -> None:
+        evidence_records = [
+            {
+                "evidence_id": "ev_neg_skip_001",
+                "evidence_kind": "negative_pattern",
+                "evidence_origin": "differential",
+                "evidence_polarity": "negative",
+                "transfer_scope": "author_local",
+                "author": "作者A",
+                "scope": "same_author",
+                "layer": "general",
+                "content_type": "concept_explainer",
+                "format": "long_explainer",
+                "domain": "history",
+                "primary_goal": "save",
+                "style_family": "question_hook",
+                "author_signature": "",
+                "feature_name": "opening_problem_presence",
+                "feature_value": "yes",
+                "metric_name": "high_low_rate_gap",
+                "metric_value": "-0.23",
+                "support_count": "9",
+                "contradiction_count": "3",
+                "support_prevalence": "0.41",
+                "contrast_prevalence": "0.64",
+                "support_sample_size": "14",
+                "contrast_sample_size": "14",
+                "route_content_type": "concept_explainer",
+                "route_format": "long_explainer",
+                "route_goal": "save",
+                "confidence_grade": "E2",
+                "ready_for_distillation": "yes",
+                "source_excerpt": "为什么会这样？",
+                "evidence_refs": "n1|n2",
+                "notes": "negative but not structurally reusable",
+            }
+        ]
+
+        result = distill_phase3_cards(evidence_records)
+        self.assertEqual(result.skill_cards, [])
+        self.assertEqual(result.anti_skill_cards, [])
+        self.assertEqual(len(result.skipped_records), 1)
 
 
 if __name__ == "__main__":

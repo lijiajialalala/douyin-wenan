@@ -15,6 +15,11 @@ fields:
     type: string
     allowed: [skill, conditional_rule, signature_pattern, composition_template]
     description: Reusable asset type covered by the base skill schema
+  - name: skill_subtype
+    required: false
+    type: string
+    allowed: [foundational_skill, gain_skill, transferable_skill]
+    description: More specific positive-skill subtype used by the distillation pipeline
   - name: status
     required: true
     type: string
@@ -102,6 +107,11 @@ fields:
     required: true
     type: string_list
     description: Checks used to judge whether the card worked
+  - name: production_actionability
+    required: false
+    type: string
+    allowed: [direct, needs_translation, diagnostic_only]
+    description: Whether the evidence can be turned into a writing move directly
   - name: positive_examples
     required: true
     type: string_list

@@ -1,6 +1,7 @@
 card_id: skill_001
 title: Early Conflict Hook For Debate Format
 card_type: skill
+skill_subtype: transferable_skill
 status: active
 layer: content_type
 priority: 80
@@ -37,6 +38,7 @@ output_contract:
 evaluation_checks:
   - Conflict is visible in the hook slot.
   - The opening does not exceed the allowed setup length for this format.
+production_actionability: direct
 positive_examples:
   - Which AI actually wins when speed matters more than polish?
 counter_examples:

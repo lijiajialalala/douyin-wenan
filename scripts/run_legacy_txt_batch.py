@@ -9,7 +9,7 @@ from _bootstrap import configure_stdio, ensure_src_path
 ensure_src_path()
 configure_stdio()
 
-from douyin_wenan.common.text_io import parse_transcript_header
+from douyin_wenan.common.text_io import compact_char_count, parse_transcript_header
 from douyin_wenan.config import load_runtime_config
 from douyin_wenan.manifest.filters import select_legacy_txt_pending
 from douyin_wenan.manifest.repository import ManifestRepository
@@ -57,6 +57,8 @@ def main() -> int:
             if not legacy_txt_path.exists():
                 raise FileNotFoundError(f"legacy txt not found: {legacy_txt_path}")
             _, body = parse_transcript_header(legacy_txt_path)
+            if compact_char_count(body) == 0:
+                raise ValueError("legacy txt body is empty")
             output_path = build_standard_txt_path(
                 corpus_root=config.corpus_dir,
                 author=row_copy["author"],

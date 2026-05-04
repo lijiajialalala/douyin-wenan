@@ -143,6 +143,84 @@ class LegacyTxtBatchTests(unittest.TestCase):
             self.assertIn("正文文案：", content)
             self.assertIn(body, content)
 
+    def test_run_legacy_txt_batch_rejects_empty_legacy_bodies(self) -> None:
+        schema = load_manifest_schema()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            runtime_root = tmp / "runtime"
+            manifest_path = runtime_root / "manifest" / "douyin_manifest.csv"
+            config_path = tmp / "local.yaml"
+            _write_config(config_path, manifest_path=manifest_path, runtime_root=runtime_root)
+
+            legacy_dir = tmp / "legacy"
+            legacy_dir.mkdir(parents=True, exist_ok=True)
+            missing_marker_path = legacy_dir / "missing_marker.txt"
+            missing_marker_path.write_text(
+                "\n".join(
+                    [
+                        "标题：只有头部没有正文",
+                        "作者：柏拉图的石头",
+                        "作品ID：empty001",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+            empty_body_path = legacy_dir / "empty_body.txt"
+            empty_body_path.write_text(
+                "\n".join(
+                    [
+                        "标题：正文标记后为空",
+                        "作者：柏拉图的石头",
+                        "作品ID：empty002",
+                        "",
+                        "正文文案：",
+                        "   ",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            repo = ManifestRepository(manifest_path, schema)
+            repo.init_empty()
+            for work_id, title, legacy_txt_path in [
+                ("empty001", "只有头部没有正文", missing_marker_path),
+                ("empty002", "正文标记后为空", empty_body_path),
+            ]:
+                row = schema.make_default_row()
+                row.update(
+                    {
+                        "work_id": work_id,
+                        "author": "柏拉图的石头",
+                        "platform": "douyin",
+                        "video_link": f"https://www.douyin.com/video/{work_id}",
+                        "account_link": "https://example.com/u/1",
+                        "title": title,
+                        "legacy_txt_path": str(legacy_txt_path.resolve()),
+                    }
+                )
+                repo.upsert_row(row)
+
+            result = _run_script(
+                "run_legacy_txt_batch.py",
+                "--config",
+                str(config_path),
+                "--author",
+                "柏拉图的石头",
+                "--skip-preflight",
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("succeeded=0", result.stdout)
+            self.assertIn("failed=2", result.stdout)
+            indexed = repo.index_by("work_id")
+            for work_id in ("empty001", "empty002"):
+                updated = indexed[work_id]
+                self.assertEqual(updated["txt_sync_status"], "failed")
+                self.assertEqual(updated["txt_path"], "")
+                self.assertIn("legacy txt body is empty", updated["notes"])
+            corpus_dir = runtime_root / "corpus"
+            self.assertFalse(corpus_dir.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

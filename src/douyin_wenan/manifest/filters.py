@@ -145,6 +145,23 @@ def select_txt_sync_rebuildable(
     )
 
 
+def select_legacy_txt_pending(
+    rows: list[dict[str, str]],
+    *,
+    limit: int = 0,
+    author: str | None = None,
+) -> list[dict[str, str]]:
+    return _select_rows(
+        rows,
+        predicate=lambda row: (
+            _status(row, "txt_sync_status") == "pending"
+            and _has_text(row, "legacy_txt_path")
+        ),
+        limit=limit,
+        author=author,
+    )
+
+
 def select_dedup_pending(
     rows: list[dict[str, str]],
     *,

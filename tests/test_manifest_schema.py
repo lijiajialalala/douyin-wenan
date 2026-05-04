@@ -66,6 +66,24 @@ class ManifestSchemaTests(unittest.TestCase):
         issues = schema.validate_row(row, strict=False)
         self.assertTrue(any(issue.field == "asr_text_path" for issue in issues))
 
+    def test_legacy_txt_allows_txt_sync_ok_without_asr_ok(self) -> None:
+        schema = load_manifest_schema()
+        row = schema.make_default_row()
+        row.update(
+            {
+                "work_id": "123",
+                "author": "无名书生",
+                "platform": "douyin",
+                "video_link": "https://www.douyin.com/video/123",
+                "title": "标题A",
+                "legacy_txt_path": "D:/legacy/无名书生/整理版/01_作品.txt",
+                "txt_sync_status": "ok",
+                "txt_path": "D:/runtime/corpus/无名书生/transcripts/123_标题A.txt",
+            }
+        )
+        issues = schema.validate_row(row, strict=False)
+        self.assertFalse(any(issue.field == "txt_sync_status" for issue in issues))
+
 
 if __name__ == "__main__":
     unittest.main()

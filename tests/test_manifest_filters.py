@@ -14,6 +14,7 @@ from douyin_wenan.manifest.filters import (
     select_dedup_pending,
     select_download_pending,
     select_download_retryable,
+    select_legacy_txt_pending,
     select_txt_sync_rebuildable,
     select_txt_sync_pending,
 )
@@ -138,6 +139,15 @@ class ManifestFiltersTests(unittest.TestCase):
             _row(work_id="skip-2", txt_sync_status="pending", dedup_status="unknown", txt_path="C:/tmp/2.txt"),
         ]
         selected = select_dedup_pending(rows)
+        self.assertEqual([row["work_id"] for row in selected], ["ok-1"])
+
+    def test_select_legacy_txt_pending_requires_legacy_path_and_pending_txt_sync(self) -> None:
+        rows = [
+            _row(work_id="ok-1", txt_sync_status="pending", legacy_txt_path="D:/legacy/1.txt"),
+            _row(work_id="skip-1", txt_sync_status="ok", legacy_txt_path="D:/legacy/2.txt"),
+            _row(work_id="skip-2", txt_sync_status="pending", legacy_txt_path=""),
+        ]
+        selected = select_legacy_txt_pending(rows)
         self.assertEqual([row["work_id"] for row in selected], ["ok-1"])
 
 

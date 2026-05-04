@@ -43,8 +43,9 @@ def transition_asr(row: dict[str, str], new_status: str) -> dict[str, str]:
 
 def transition_txt_sync(row: dict[str, str], new_status: str) -> dict[str, str]:
     if new_status == "ok":
-        if row.get("asr_status") != "ok":
-            raise ValueError("Cannot mark txt sync ok unless asr_status is ok")
+        has_legacy_txt = bool((row.get("legacy_txt_path", "") or "").strip())
+        if row.get("asr_status") != "ok" and not has_legacy_txt:
+            raise ValueError("Cannot mark txt sync ok unless asr_status is ok or legacy_txt_path is set")
         if not (row.get("txt_path", "") or "").strip():
             raise ValueError("Cannot mark txt sync ok without txt_path")
     _transition(row, "txt_sync_status", TXT_SYNC_ALLOWED, new_status)

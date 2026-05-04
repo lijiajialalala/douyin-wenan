@@ -1151,9 +1151,8 @@ def _resolve_target_authors(
     inferred_target_authors: tuple[str, ...],
 ) -> tuple[tuple[str, ...], bool]:
     if explicit_target_authors is not None:
-        return _with_shared_evidence_target(explicit_target_authors), False
-    if inferred_target_authors:
-        return _with_shared_evidence_target(inferred_target_authors), False
+        cleaned = _with_shared_evidence_target(explicit_target_authors)
+        return (cleaned, False) if cleaned else ((), True)
     return (), True
 
 

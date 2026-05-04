@@ -10,6 +10,11 @@ fields:
     required: true
     type: string
     description: Human-readable anti-skill title
+  - name: card_type
+    required: false
+    type: string
+    allowed: [anti_skill]
+    description: Reusable asset type marker for anti-skill cards
   - name: skill_subtype
     required: false
     type: string

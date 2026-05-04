@@ -359,7 +359,7 @@ def _stronger_status(left: str, right: str) -> str:
 def _refresh_readable_summary(card: dict[str, object]) -> dict[str, object]:
     feature_name = str(card.get("_source_feature_name", ""))
     feature_value = str(card.get("_source_feature_value", ""))
-    if card.get("card_type") == "anti_skill":
+    if card.get("card_type") == "anti_skill" or card.get("skill_subtype") == "negative_pattern":
         card["_summary_zh"] = (
             f"{_anti_skill_title_zh(feature_name, feature_value)}。"
             f"这类模式在当前证据里更常落在弱稿一侧，适用范围：{_card_route_text_zh(card)}。"
@@ -443,6 +443,7 @@ def _build_anti_skill_card(record: dict[str, str], *, skill_subtype: str) -> dic
     card = {
         "card_id": _card_id("anti", evidence_id, feature_name, feature_value),
         "title": _anti_skill_title(feature_name, feature_value),
+        "card_type": "anti_skill",
         "skill_subtype": skill_subtype,
         "status": _status_from_confidence(_text(record, "confidence_grade")),
         "layer": _text(record, "layer") or "general",

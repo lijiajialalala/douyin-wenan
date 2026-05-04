@@ -1163,6 +1163,53 @@ class Phase3DistillationTests(unittest.TestCase):
         self.assertEqual(anti_rows[0]["中文标题"], "不要一路平铺解释到底")
         self.assertNotIn("argument_shape", anti_rows[0]["中文标题"])
 
+    def test_merged_anti_skill_keeps_negative_readable_summary(self) -> None:
+        evidence_records = [
+            self._phase3_record(
+                evidence_id="ev_neg_straight_book",
+                evidence_kind="negative_pattern",
+                evidence_origin="differential",
+                evidence_polarity="negative",
+                feature_name="argument_shape",
+                feature_value="straight_explainer",
+                content_type="book_digest",
+                domain="books",
+                primary_goal="save",
+                route_content_type="book_digest",
+                route_goal="save",
+                notes="weak flat progression in book digest",
+            ),
+            self._phase3_record(
+                evidence_id="ev_neg_straight_history",
+                evidence_kind="negative_pattern",
+                evidence_origin="differential",
+                evidence_polarity="negative",
+                feature_name="argument_shape",
+                feature_value="straight_explainer",
+                content_type="historical_interpretation",
+                domain="history",
+                primary_goal="save",
+                route_content_type="historical_interpretation",
+                route_goal="save",
+                notes="weak flat progression in history",
+            ),
+        ]
+
+        result = distill_phase3_cards(evidence_records)
+
+        self.assertEqual(len(result.anti_skill_cards), 1)
+        self.assertEqual(result.anti_skill_cards[0]["card_type"], "anti_skill")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            write_phase3_exports(result, tmp)
+            anti_rows = read_csv_rows(tmp / "readable_zh" / "anti_skills_zh.csv")
+
+        self.assertEqual(len(anti_rows), 1)
+        self.assertEqual(anti_rows[0]["中文标题"], "不要一路平铺解释到底")
+        self.assertIn("更常落在弱稿一侧", anti_rows[0]["中文说明"])
+        self.assertNotIn("增益能力", anti_rows[0]["中文说明"])
+        self.assertNotIn("argument_shape=straight_explainer", anti_rows[0]["中文说明"])
+
     def test_distill_phase3_skips_low_value_negative_descriptor_patterns(self) -> None:
         evidence_records = [
             {

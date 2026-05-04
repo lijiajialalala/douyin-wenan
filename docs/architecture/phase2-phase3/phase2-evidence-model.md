@@ -188,7 +188,27 @@ Example:
 - direct question openings appear more often in high performers within author
   and remain common in cross-author rows of the same format
 
-### 6. Rejected Pattern
+### 6. Route Foundation Pattern
+
+A pattern that is common inside a specific route, but not claimed as globally
+universal.
+
+Current route scope is:
+
+`content_type + format + primary_goal`
+
+Route foundation evidence must require enough rows and more than one source
+author before it can become `route_local`.
+
+### 7. Cross-Author Transfer Pattern
+
+A pattern that repeats across multiple authors inside the same route.
+
+This is stronger than author-local foundation evidence because no single author
+is allowed to carry the whole claim. It is still not proof of causality; it is a
+transfer candidate for Phase 3.
+
+### 8. Rejected Pattern
 
 A pattern that looked plausible but failed support checks.
 
@@ -302,8 +322,9 @@ Recommended bounded operations:
 4. compute raw and relative performance fields
 5. build author baselines
 6. build author high-low contrasts
-7. build cross-author corroboration checks
-8. emit evidence records and candidate exports
+7. build route foundation patterns
+8. build cross-author transfer checks
+9. emit evidence records and candidate exports
 
 Each operation should follow the same data-system contract as Phase 1:
 

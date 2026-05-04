@@ -14,6 +14,16 @@ from douyin_wenan.paths import ensure_parent_dir
 
 HIGH_PERCENTILE_THRESHOLD = 0.67
 LOW_PERCENTILE_THRESHOLD = 0.33
+ROUTE_FOUNDATION_MIN_ROWS = 8
+ROUTE_FOUNDATION_MIN_SUPPORT = 6
+ROUTE_FOUNDATION_MIN_RATE = 0.65
+ROUTE_FOUNDATION_MIN_AUTHORS = 2
+CROSS_AUTHOR_TRANSFER_MIN_ROWS = 10
+CROSS_AUTHOR_TRANSFER_MIN_SUPPORT = 8
+CROSS_AUTHOR_TRANSFER_MIN_RATE = 0.70
+CROSS_AUTHOR_TRANSFER_MIN_AUTHORS = 2
+CROSS_AUTHOR_TRANSFER_MIN_AUTHOR_SUPPORT = 3
+CROSS_AUTHOR_TRANSFER_MIN_AUTHOR_RATE = 0.55
 FEATURE_FIELDS = (
     "style_family",
     "hook_type",
@@ -23,6 +33,7 @@ FEATURE_FIELDS = (
     "cta_type",
     "argument_shape",
 )
+SHARED_EVIDENCE_KINDS = {"route_foundation_pattern", "cross_author_transfer_pattern"}
 EXAMPLE_MARKERS = ("比如", "例如", "举个例子", "就像", "拿", "一方面", "另一方面")
 QUESTION_STYLE_MARKERS = ("为什么", "凭什么", "怎么", "谁", "哪一个", "难道")
 CONTRARIAN_MARKERS = ("很多人以为", "不要以为", "你以为", "其实", "真相是", "恰恰相反")
@@ -234,6 +245,8 @@ def analyze_phase2_rows(
         author_high_low,
         ranked_rows,
         author_foundation_patterns=author_foundation_patterns,
+        route_foundation_patterns=route_foundation_patterns,
+        route_source_rows=route_source_rows,
     )
     return Phase2AnalysisResult(
         labeled_rows=ranked_rows,
@@ -302,7 +315,7 @@ def write_phase2_exports(
         replace_all=replace_all,
         empty_fieldnames=AUTHOR_CONTRAST_FIELDS,
     )
-    _merge_rows(
+    _merge_evidence_rows(
         evidence_path,
         result.evidence_records,
         key_fields=("evidence_id",),
@@ -611,17 +624,203 @@ def _build_author_foundation_patterns(
     )
 
 
+def _build_route_foundation_evidence(
+    route_foundation_patterns: list[dict[str, str]],
+    route_source_rows: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    evidence_records: list[dict[str, str]] = []
+    for pattern in route_foundation_patterns:
+        row_count = _to_int(pattern.get("row_count"))
+        support_count = _to_int(pattern.get("support_count"))
+        route_rate = _to_float(pattern.get("route_rate"))
+        if row_count < ROUTE_FOUNDATION_MIN_ROWS:
+            continue
+        if support_count < ROUTE_FOUNDATION_MIN_SUPPORT or route_rate < ROUTE_FOUNDATION_MIN_RATE:
+            continue
+
+        route_scope = (
+            pattern["route_content_type"],
+            pattern["route_format"],
+            pattern["route_goal"],
+        )
+        support_rows = _support_rows_for_pattern(
+            route_source_rows,
+            route_scope=route_scope,
+            feature_name=pattern["feature_name"],
+            feature_value=pattern["feature_value"],
+        )
+        author_count = len({row["author"] for row in support_rows if row.get("author")})
+        if author_count < ROUTE_FOUNDATION_MIN_AUTHORS:
+            continue
+
+        confidence_grade = _route_foundation_confidence_grade(
+            row_count=row_count,
+            support_count=support_count,
+            support_rate=route_rate,
+            author_count=author_count,
+        )
+        evidence_records.append(
+            {
+                "evidence_id": _hashed_id(
+                    "ev",
+                    pattern["route_content_type"],
+                    pattern["route_format"],
+                    pattern["route_goal"],
+                    pattern["feature_name"],
+                    pattern["feature_value"],
+                    "route_foundation_pattern",
+                ),
+                "evidence_kind": "route_foundation_pattern",
+                "evidence_origin": "route",
+                "evidence_polarity": "positive",
+                "transfer_scope": "route_local",
+                "work_id": "",
+                "author": "多作者",
+                "scope": "same_content_type",
+                "layer": _evidence_layer_for_feature(pattern["feature_name"]),
+                "content_type": pattern["route_content_type"],
+                "format": pattern["route_format"],
+                "domain": _dominant_domain(support_rows),
+                "primary_goal": pattern["route_goal"],
+                "style_family": _dominant_style_family(support_rows),
+                "author_signature": "",
+                "feature_name": pattern["feature_name"],
+                "feature_value": pattern["feature_value"],
+                "metric_name": "route_prevalence",
+                "metric_value": pattern["route_rate"],
+                "support_count": pattern["support_count"],
+                "contradiction_count": str(max(0, row_count - support_count)),
+                "support_prevalence": pattern["route_rate"],
+                "contrast_prevalence": _fmt_float(1.0 - route_rate),
+                "baseline_prevalence": "",
+                "support_sample_size": pattern["row_count"],
+                "contrast_sample_size": "",
+                "baseline_sample_size": "",
+                "route_content_type": pattern["route_content_type"],
+                "route_format": pattern["route_format"],
+                "route_goal": pattern["route_goal"],
+                "confidence_grade": confidence_grade,
+                "ready_for_distillation": "yes" if confidence_grade in {"E2", "E3", "E4"} else "no",
+                "source_excerpt": support_rows[0]["opening_excerpt"] if support_rows else "",
+                "evidence_refs": "|".join(row["work_id"] for row in support_rows[:5]),
+                "notes": _build_route_foundation_evidence_note(pattern, author_count=author_count),
+            }
+        )
+    return evidence_records
+
+
+def _build_cross_author_transfer_evidence(
+    route_foundation_patterns: list[dict[str, str]],
+    route_source_rows: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    evidence_records: list[dict[str, str]] = []
+    for pattern in route_foundation_patterns:
+        row_count = _to_int(pattern.get("row_count"))
+        support_count = _to_int(pattern.get("support_count"))
+        route_rate = _to_float(pattern.get("route_rate"))
+        if row_count < CROSS_AUTHOR_TRANSFER_MIN_ROWS:
+            continue
+        if support_count < CROSS_AUTHOR_TRANSFER_MIN_SUPPORT or route_rate < CROSS_AUTHOR_TRANSFER_MIN_RATE:
+            continue
+
+        route_scope = (
+            pattern["route_content_type"],
+            pattern["route_format"],
+            pattern["route_goal"],
+        )
+        route_rows = [row for row in route_source_rows if _route_scope(row) == route_scope]
+        author_stats = _author_support_stats(
+            route_rows,
+            feature_name=pattern["feature_name"],
+            feature_value=pattern["feature_value"],
+        )
+        supporting_authors = [
+            author
+            for author, stats in author_stats.items()
+            if stats["support_count"] >= CROSS_AUTHOR_TRANSFER_MIN_AUTHOR_SUPPORT
+            and stats["support_rate"] >= CROSS_AUTHOR_TRANSFER_MIN_AUTHOR_RATE
+        ]
+        if len(supporting_authors) < CROSS_AUTHOR_TRANSFER_MIN_AUTHORS:
+            continue
+
+        support_rows = _support_rows_for_pattern(
+            route_source_rows,
+            route_scope=route_scope,
+            feature_name=pattern["feature_name"],
+            feature_value=pattern["feature_value"],
+        )
+        confidence_grade = _cross_author_transfer_confidence_grade(
+            row_count=row_count,
+            support_count=support_count,
+            support_rate=route_rate,
+            author_count=len(supporting_authors),
+        )
+        evidence_records.append(
+            {
+                "evidence_id": _hashed_id(
+                    "ev",
+                    pattern["route_content_type"],
+                    pattern["route_format"],
+                    pattern["route_goal"],
+                    pattern["feature_name"],
+                    pattern["feature_value"],
+                    "cross_author_transfer_pattern",
+                ),
+                "evidence_kind": "cross_author_transfer_pattern",
+                "evidence_origin": "transfer",
+                "evidence_polarity": "positive",
+                "transfer_scope": "cross_author",
+                "work_id": "",
+                "author": "多作者",
+                "scope": "cross_author",
+                "layer": _evidence_layer_for_feature(pattern["feature_name"]),
+                "content_type": pattern["route_content_type"],
+                "format": pattern["route_format"],
+                "domain": _dominant_domain(support_rows),
+                "primary_goal": pattern["route_goal"],
+                "style_family": _dominant_style_family(support_rows),
+                "author_signature": "",
+                "feature_name": pattern["feature_name"],
+                "feature_value": pattern["feature_value"],
+                "metric_name": "cross_author_route_prevalence",
+                "metric_value": pattern["route_rate"],
+                "support_count": pattern["support_count"],
+                "contradiction_count": str(max(0, row_count - support_count)),
+                "support_prevalence": pattern["route_rate"],
+                "contrast_prevalence": _fmt_float(1.0 - route_rate),
+                "baseline_prevalence": "",
+                "support_sample_size": pattern["row_count"],
+                "contrast_sample_size": "",
+                "baseline_sample_size": "",
+                "route_content_type": pattern["route_content_type"],
+                "route_format": pattern["route_format"],
+                "route_goal": pattern["route_goal"],
+                "confidence_grade": confidence_grade,
+                "ready_for_distillation": "yes" if confidence_grade in {"E2", "E3", "E4"} else "no",
+                "source_excerpt": support_rows[0]["opening_excerpt"] if support_rows else "",
+                "evidence_refs": "|".join(row["work_id"] for row in support_rows[:5]),
+                "notes": _build_cross_author_transfer_evidence_note(pattern, supporting_authors=supporting_authors),
+            }
+        )
+    return evidence_records
+
+
 def _build_evidence_records(
     contrasts: list[dict[str, str]],
     labeled_rows: list[dict[str, str]],
     *,
     author_foundation_patterns: list[dict[str, str]],
+    route_foundation_patterns: list[dict[str, str]],
+    route_source_rows: list[dict[str, str]],
 ) -> list[dict[str, str]]:
     rows_by_author: dict[str, list[dict[str, str]]] = {}
     for row in labeled_rows:
         rows_by_author.setdefault(row["author"], []).append(row)
 
-    evidence_records: list[dict[str, str]] = []
+    evidence_records: list[dict[str, str]] = [
+        *_build_route_foundation_evidence(route_foundation_patterns, route_source_rows),
+        *_build_cross_author_transfer_evidence(route_foundation_patterns, route_source_rows),
+    ]
     for foundation in author_foundation_patterns:
         author = foundation["author"]
         feature_name = foundation["feature_name"]
@@ -782,6 +981,39 @@ def _merge_rows(
     fieldnames = _merged_fieldnames(retained_rows, new_rows) or list(empty_fieldnames)
     sorted_rows = sorted(merged_rows, key=lambda row: _row_key(row, ("author", *key_fields)))
     write_csv_rows(path, fieldnames, sorted_rows)
+
+
+def _merge_evidence_rows(
+    path: Path,
+    new_rows: list[dict[str, str]],
+    *,
+    key_fields: tuple[str, ...],
+    target_authors: tuple[str, ...],
+    replace_all: bool,
+    empty_fieldnames: tuple[str, ...],
+) -> None:
+    existing_rows = read_csv_rows(path) if path.exists() else []
+    retained_rows = [] if replace_all else [
+        row
+        for row in existing_rows
+        if not _is_shared_evidence_row(row)
+        and (not target_authors or (row.get("author", "") or "").strip() not in target_authors)
+    ]
+    merged_by_key: dict[tuple[str, ...], dict[str, str]] = {}
+    for row in retained_rows + new_rows:
+        merged_by_key[_row_key(row, key_fields)] = row
+    merged_rows = list(merged_by_key.values())
+    ensure_parent_dir(path)
+    if not merged_rows:
+        write_csv_rows(path, list(empty_fieldnames), [])
+        return
+    fieldnames = _merged_fieldnames(retained_rows, new_rows) or list(empty_fieldnames)
+    sorted_rows = sorted(merged_rows, key=lambda row: _row_key(row, ("author", *key_fields)))
+    write_csv_rows(path, fieldnames, sorted_rows)
+
+
+def _is_shared_evidence_row(row: dict[str, str]) -> bool:
+    return (row.get("evidence_kind", "") or "").strip() in SHARED_EVIDENCE_KINDS
 
 
 def _row_key(row: dict[str, str], key_fields: tuple[str, ...]) -> tuple[str, ...]:
@@ -1034,6 +1266,24 @@ def _build_foundation_evidence_note(foundation: dict[str, str]) -> str:
     )
 
 
+def _build_route_foundation_evidence_note(pattern: dict[str, str], *, author_count: int) -> str:
+    return (
+        "Route foundation: "
+        f"{pattern['feature_name']}={pattern['feature_value']} is common inside route "
+        f"{pattern['route_content_type']}/{pattern['route_format']}/{pattern['route_goal']}. "
+        f"support_rate={pattern['route_rate']}; supporting_authors={author_count}"
+    )
+
+
+def _build_cross_author_transfer_evidence_note(pattern: dict[str, str], *, supporting_authors: list[str]) -> str:
+    return (
+        "Cross-author transfer: "
+        f"{pattern['feature_name']}={pattern['feature_value']} repeats across authors inside route "
+        f"{pattern['route_content_type']}/{pattern['route_format']}/{pattern['route_goal']}. "
+        f"supporting_authors={','.join(sorted(supporting_authors))}"
+    )
+
+
 def _route_scope(row: dict[str, str]) -> tuple[str, str, str]:
     return (
         (row.get("content_type", "") or "").strip() or "unknown",
@@ -1082,6 +1332,80 @@ def _foundation_confidence_grade(*, support_rate: float, foundation_gap: float, 
     if support_rate >= 0.55 and foundation_gap >= 0.15 and route_row_count >= 6:
         return "E2"
     return "E1"
+
+
+def _route_foundation_confidence_grade(
+    *,
+    row_count: int,
+    support_count: int,
+    support_rate: float,
+    author_count: int,
+) -> str:
+    if author_count >= 3 and row_count >= 16 and support_count >= 12 and support_rate >= 0.75:
+        return "E4"
+    if author_count >= 2 and row_count >= ROUTE_FOUNDATION_MIN_ROWS and support_rate >= ROUTE_FOUNDATION_MIN_RATE:
+        return "E3"
+    return "E1"
+
+
+def _cross_author_transfer_confidence_grade(
+    *,
+    row_count: int,
+    support_count: int,
+    support_rate: float,
+    author_count: int,
+) -> str:
+    if author_count >= 3 and row_count >= 16 and support_count >= 12 and support_rate >= 0.75:
+        return "E4"
+    if (
+        author_count >= CROSS_AUTHOR_TRANSFER_MIN_AUTHORS
+        and row_count >= CROSS_AUTHOR_TRANSFER_MIN_ROWS
+        and support_count >= CROSS_AUTHOR_TRANSFER_MIN_SUPPORT
+        and support_rate >= CROSS_AUTHOR_TRANSFER_MIN_RATE
+    ):
+        return "E3"
+    return "E1"
+
+
+def _support_rows_for_pattern(
+    rows: list[dict[str, str]],
+    *,
+    route_scope: tuple[str, str, str],
+    feature_name: str,
+    feature_value: str,
+) -> list[dict[str, str]]:
+    return [
+        row
+        for row in rows
+        if _route_scope(row) == route_scope and (row.get(feature_name, "") or "").strip() == feature_value
+    ]
+
+
+def _author_support_stats(
+    rows: list[dict[str, str]],
+    *,
+    feature_name: str,
+    feature_value: str,
+) -> dict[str, dict[str, float]]:
+    rows_by_author: dict[str, list[dict[str, str]]] = {}
+    for row in rows:
+        author = (row.get("author", "") or "").strip()
+        if not author:
+            continue
+        rows_by_author.setdefault(author, []).append(row)
+
+    stats: dict[str, dict[str, float]] = {}
+    for author, author_rows in rows_by_author.items():
+        support_count = sum(
+            1 for row in author_rows if (row.get(feature_name, "") or "").strip() == feature_value
+        )
+        row_count = len(author_rows)
+        stats[author] = {
+            "row_count": float(row_count),
+            "support_count": float(support_count),
+            "support_rate": support_count / row_count if row_count else 0.0,
+        }
+    return stats
 
 
 def _opening_excerpt(text: str) -> str:

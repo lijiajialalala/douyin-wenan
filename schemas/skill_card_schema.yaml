@@ -145,6 +145,7 @@ fields:
 
 row_invariants:
   - rule: card_id must be unique within the card catalog
+  - rule: promotion_status author_local requires non-empty author_scope
   - rule: signature_pattern requires non-empty author_scope
   - rule: composition_template should reference at least one slot and one routing dimension
   - rule: active cards must include at least one evidence_ref and at least one evaluation_check

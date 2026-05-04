@@ -60,6 +60,10 @@ fields:
     required: false
     type: string_list
     description: Relevant goal routing tags
+  - name: author_scope
+    required: false
+    type: string
+    description: Author name when the anti-skill is author-local
   - name: failure_pattern
     required: true
     type: string
@@ -108,5 +112,6 @@ fields:
 
 row_invariants:
   - rule: card_id must be unique within the anti-skill catalog
+  - rule: promotion_status author_local requires non-empty author_scope
   - rule: active anti-skill cards must include at least one detection signal and one prevention action
   - rule: active anti-skill cards must include at least one evidence_ref

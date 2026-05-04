@@ -104,6 +104,7 @@ def write_phase3_exports(
             "layer": str(card["layer"]),
             "transferability_level": str(card.get("transferability_level", "")),
             "promotion_status": str(card.get("promotion_status", "")),
+            "author_scope": str(card.get("author_scope", "")),
             "source_author": str(card.get("_source_author", "")),
             "evidence_refs": "|".join(str(ref) for ref in card.get("evidence_refs", [])),
         }
@@ -118,6 +119,7 @@ def write_phase3_exports(
             "layer": str(card["layer"]),
             "transferability_level": str(card.get("transferability_level", "")),
             "promotion_status": str(card.get("promotion_status", "")),
+            "author_scope": str(card.get("author_scope", "")),
             "source_author": str(card.get("_source_author", "")),
             "evidence_refs": "|".join(str(ref) for ref in card.get("evidence_refs", [])),
         }
@@ -213,12 +215,12 @@ def _build_skill_card(record: dict[str, str], *, skill_subtype: str) -> dict[str
     layer = _text(record, "layer") or "general"
     status = _status_from_confidence(_text(record, "confidence_grade"))
     card_type = "signature_pattern" if layer == "author_signature" else "skill"
-    author_scope = _text(record, "author") if card_type == "signature_pattern" else ""
     slots = _slots_for_feature(feature_name)
     title = _skill_title(feature_name, feature_value)
     style_family = _text(record, "style_family")
     transferability_level = _transferability_level(record, skill_subtype=skill_subtype)
     promotion_status = _promotion_status(record, transferability_level=transferability_level)
+    author_scope = _author_scope_for_card(record, card_type=card_type, promotion_status=promotion_status)
     card = {
         "card_id": _card_id("skill", evidence_id, feature_name, feature_value),
         "title": title,
@@ -267,6 +269,7 @@ def _build_anti_skill_card(record: dict[str, str], *, skill_subtype: str) -> dic
     evidence_id = _text(record, "evidence_id")
     transferability_level = _transferability_level(record, skill_subtype=skill_subtype)
     promotion_status = _promotion_status(record, transferability_level=transferability_level)
+    author_scope = _author_scope_for_card(record, card_type="anti_skill", promotion_status=promotion_status)
     card = {
         "card_id": _card_id("anti", evidence_id, feature_name, feature_value),
         "title": _anti_skill_title(feature_name, feature_value),
@@ -281,6 +284,7 @@ def _build_anti_skill_card(record: dict[str, str], *, skill_subtype: str) -> dic
         "formats": _list_if_text(_text(record, "format")),
         "domains": _list_if_text(_text(record, "domain")),
         "goals": _list_if_text(_text(record, "primary_goal")),
+        "author_scope": author_scope,
         "failure_pattern": _anti_failure_pattern(feature_name, feature_value),
         "detection_signals": _anti_detection_signals(feature_name, feature_value, record),
         "likely_causes": _anti_likely_causes(feature_name, feature_value),
@@ -371,6 +375,12 @@ def _promotion_status(record: dict[str, str], *, transferability_level: str) -> 
     if confidence == "E3":
         return "route_validated"
     return "author_local"
+
+
+def _author_scope_for_card(record: dict[str, str], *, card_type: str, promotion_status: str) -> str:
+    if card_type == "signature_pattern" or promotion_status == "author_local":
+        return _text(record, "author")
+    return ""
 
 
 def _misuse_risks(record: dict[str, str], *, transferability_level: str) -> list[str]:

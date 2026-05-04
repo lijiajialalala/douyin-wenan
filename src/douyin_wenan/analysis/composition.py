@@ -152,6 +152,8 @@ def _matches_skill_card(card: dict[str, object], request: CompositionRequest) ->
         return False
     if not _matches_optional_dimension(card.get("style_families"), request.style_family):
         return False
+    if not _matches_author_scope(card, request):
+        return False
     if not _matches_author_signature(card, request):
         return False
     return True
@@ -170,6 +172,8 @@ def _matches_anti_skill(card: dict[str, object], request: CompositionRequest) ->
     if not _matches_dimension(card.get("goals"), request.goal):
         return False
     if not _matches_dimension(card.get("content_types"), request.content_type):
+        return False
+    if not _matches_author_scope(card, request):
         return False
     return True
 
@@ -192,12 +196,7 @@ def _matches_optional_dimension(raw_values: object, expected: str) -> bool:
 
 def _matches_author_signature(card: dict[str, object], request: CompositionRequest) -> bool:
     author_signatures = _string_list(card.get("author_signatures"))
-    author_scope = str(card.get("author_scope", "")).strip()
     card_type = str(card.get("card_type", "")).strip()
-
-    if author_scope:
-        if not request.author_scope or request.author_scope != author_scope:
-            return False
 
     if author_signatures:
         if not request.author_signature:
@@ -208,6 +207,17 @@ def _matches_author_signature(card: dict[str, object], request: CompositionReque
     if card_type == "signature_pattern" and not request.author_signature:
         return False
     return True
+
+
+def _matches_author_scope(card: dict[str, object], request: CompositionRequest) -> bool:
+    author_scope = str(card.get("author_scope", "")).strip()
+    promotion_status = str(card.get("promotion_status", "")).strip()
+
+    if promotion_status == "author_local" and not author_scope:
+        return False
+    if not author_scope:
+        return True
+    return bool(request.author_scope and request.author_scope == author_scope)
 
 
 def _group_cards_by_slot(cards: list[dict[str, object]]) -> dict[str, list[dict[str, object]]]:

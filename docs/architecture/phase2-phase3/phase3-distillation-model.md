@@ -214,6 +214,12 @@ Current promotion statuses:
 - `cross_route_validated`: supported across multiple routes or authors
 - `global_guardrail`: broad guardrail with strong evidence
 
+`author_local` is an executable boundary, not just a label. Phase 3 must
+persist `author_scope` for author-local skill and anti-skill cards, and
+composition must reject those cards unless the request has the same author
+scope. If an author-local card lacks `author_scope`, composition must fail
+closed and drop it.
+
 This keeps Phase 3 from turning a historical narration habit, an AI showdown
 move, or a creator signature into a fake universal writing rule.
 

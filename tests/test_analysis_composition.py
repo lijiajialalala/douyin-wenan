@@ -199,6 +199,79 @@ class CompositionEngineTests(unittest.TestCase):
             )
         )
 
+    def test_compose_plan_rejects_author_local_cards_for_other_authors(self) -> None:
+        skill_cards = [
+            self._skill_card(
+                card_id="author_a_hook",
+                title="Author A Hook",
+                layer="content_type",
+                priority=90,
+                hardness="required",
+                content_types=["concept_explainer"],
+                formats=["long_explainer"],
+                slots=["hook"],
+                author_scope="作者A",
+                promotion_status="author_local",
+            )
+        ]
+        anti_skill_cards = [
+            self._anti_skill_card(
+                card_id="author_a_guardrail",
+                title="Author A Guardrail",
+                priority=90,
+                hardness="required",
+                formats=["long_explainer"],
+                author_scope="作者A",
+                promotion_status="author_local",
+            )
+        ]
+
+        plan = compose_plan(
+            skill_cards,
+            anti_skill_cards,
+            CompositionRequest(
+                domain="history",
+                format="long_explainer",
+                goal="completion",
+                content_type="concept_explainer",
+                author_scope="作者B",
+            ),
+        )
+
+        self.assertEqual(plan["status"], "rejected")
+        self.assertNotIn("author_a_hook", plan.get("selected_cards", []))
+        self.assertNotIn("author_a_guardrail", plan.get("selected_cards", []))
+
+    def test_compose_plan_rejects_author_local_cards_without_author_scope(self) -> None:
+        skill_cards = [
+            self._skill_card(
+                card_id="legacy_author_local_hook",
+                title="Legacy Author Local Hook",
+                layer="content_type",
+                priority=90,
+                hardness="required",
+                content_types=["concept_explainer"],
+                formats=["long_explainer"],
+                slots=["hook"],
+                promotion_status="author_local",
+            )
+        ]
+
+        plan = compose_plan(
+            skill_cards,
+            [],
+            CompositionRequest(
+                domain="history",
+                format="long_explainer",
+                goal="completion",
+                content_type="concept_explainer",
+                author_scope="作者A",
+            ),
+        )
+
+        self.assertEqual(plan["status"], "rejected")
+        self.assertNotIn("legacy_author_local_hook", plan.get("selected_cards", []))
+
     def test_write_composition_plan_writes_schema_valid_yaml(self) -> None:
         skill_cards = [
             self._skill_card(
@@ -250,6 +323,8 @@ class CompositionEngineTests(unittest.TestCase):
         author_signatures: list[str] | None = None,
         overrides: list[str] | None = None,
         status: str = "candidate",
+        transferability_level: str = "content_type_specific",
+        promotion_status: str = "route_validated",
     ) -> dict[str, object]:
         return {
             "card_id": card_id,
@@ -259,6 +334,8 @@ class CompositionEngineTests(unittest.TestCase):
             "layer": layer,
             "priority": priority,
             "hardness": hardness,
+            "transferability_level": transferability_level,
+            "promotion_status": promotion_status,
             "content_types": content_types or [],
             "formats": formats or [],
             "domains": domains or [],
@@ -292,6 +369,9 @@ class CompositionEngineTests(unittest.TestCase):
         formats: list[str] | None = None,
         goals: list[str] | None = None,
         status: str = "candidate",
+        author_scope: str = "",
+        transferability_level: str = "content_type_specific",
+        promotion_status: str = "route_validated",
     ) -> dict[str, object]:
         return {
             "card_id": card_id,
@@ -300,10 +380,13 @@ class CompositionEngineTests(unittest.TestCase):
             "layer": "general",
             "priority": priority,
             "hardness": hardness,
+            "transferability_level": transferability_level,
+            "promotion_status": promotion_status,
             "content_types": [],
             "formats": formats or [],
             "domains": [],
             "goals": goals or [],
+            "author_scope": author_scope,
             "failure_pattern": "failure",
             "detection_signals": ["signal"],
             "likely_causes": ["cause"],

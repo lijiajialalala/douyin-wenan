@@ -139,6 +139,7 @@ class Phase3DistillationTests(unittest.TestCase):
         self.assertEqual(skill_card["production_actionability"], "direct")
         self.assertEqual(skill_card["transferability_level"], "content_type_specific")
         self.assertEqual(skill_card["promotion_status"], "author_local")
+        self.assertEqual(skill_card["author_scope"], "柏拉图的石头")
         self.assertTrue(skill_card["misuse_risks"])
         self.assertEqual(skill_card["evidence_refs"], ["ev_pos_001"])
 
@@ -149,6 +150,7 @@ class Phase3DistillationTests(unittest.TestCase):
         self.assertIn("long_explainer", anti_card["formats"])
         self.assertEqual(anti_card["transferability_level"], "content_type_specific")
         self.assertEqual(anti_card["promotion_status"], "author_local")
+        self.assertEqual(anti_card["author_scope"], "柏拉图的石头")
         self.assertTrue(anti_card["misuse_risks"])
         self.assertEqual(anti_card["evidence_refs"], ["ev_neg_001"])
 
@@ -241,6 +243,8 @@ class Phase3DistillationTests(unittest.TestCase):
             self.assertTrue(paths["readable_zh"]["anti_skills_md"].exists())
             self.assertNotIn("_source_author", skill_card)
             self.assertNotIn("_source_author", anti_card)
+            self.assertEqual(skill_card["author_scope"], "柏拉图的石头")
+            self.assertEqual(anti_card["author_scope"], "柏拉图的石头")
 
     def test_cross_author_transfer_records_become_cross_route_cards(self) -> None:
         evidence_records = [
@@ -288,6 +292,7 @@ class Phase3DistillationTests(unittest.TestCase):
         self.assertEqual(card["status"], "active")
         self.assertEqual(card["transferability_level"], "cross_domain_rhetorical")
         self.assertEqual(card["promotion_status"], "cross_route_validated")
+        self.assertNotIn("author_scope", card)
         self.assertIn("Do not apply outside the listed routing scope without fresh evidence.", card["misuse_risks"])
 
     def test_write_phase3_exports_merges_author_scoped_summary(self) -> None:
